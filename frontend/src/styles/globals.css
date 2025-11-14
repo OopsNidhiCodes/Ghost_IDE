@@ -1,0 +1,239 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Error handling and notification animations */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-2px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(2px);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+.animate-slide-out-right {
+  animation: slide-out-right 0.3s ease-in;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+@layer base {
+  * {
+    @apply border-ghost-700;
+  }
+  
+  body {
+    @apply bg-ghost-950 text-ghost-100 font-mono;
+  }
+  
+  /* Custom scrollbar for spooky theme */
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-ghost-900;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-ghost-700 rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ghost-600;
+  }
+  
+  /* Scrollbar utility classes */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  
+  .scrollbar-thumb-ghost-600::-webkit-scrollbar-thumb {
+    @apply bg-ghost-600;
+  }
+  
+  .scrollbar-track-ghost-800::-webkit-scrollbar-track {
+    @apply bg-ghost-800;
+  }
+}
+
+@layer components {
+  .spooky-button {
+    @apply bg-spooky-purple hover:bg-spooky-purple/80 text-white px-4 py-2 rounded-lg 
+           transition-all duration-200 hover:shadow-lg hover:shadow-spooky-purple/25
+           border border-spooky-purple/50 hover:border-spooky-purple;
+  }
+  
+  .spooky-input {
+    @apply bg-ghost-800 border border-ghost-600 rounded-lg px-3 py-2 
+           text-ghost-100 placeholder-ghost-400 focus:border-spooky-purple 
+           focus:ring-1 focus:ring-spooky-purple focus:outline-none
+           transition-colors duration-200;
+  }
+  
+  .spooky-panel {
+    @apply bg-ghost-900 border border-ghost-700 rounded-lg p-4 
+           shadow-lg backdrop-blur-sm;
+  }
+  
+  .ghost-glow {
+    @apply animate-spooky-glow;
+  }
+  
+  .ghost-float {
+    @apply animate-ghost-float;
+  }
+  
+  /* Editor specific styles */
+  .editor-container {
+    @apply relative overflow-hidden;
+  }
+  
+  .editor-header {
+    @apply bg-ghost-900 border-b border-ghost-700 px-4 py-2 flex items-center justify-between;
+  }
+  
+  /* Custom slider styles for preferences */
+  .slider {
+    @apply bg-ghost-700 rounded-lg appearance-none cursor-pointer;
+  }
+  
+  .slider::-webkit-slider-thumb {
+    @apply appearance-none w-4 h-4 bg-spooky-purple rounded-full cursor-pointer;
+  }
+  
+  .slider::-moz-range-thumb {
+    @apply w-4 h-4 bg-spooky-purple rounded-full cursor-pointer border-0;
+  }
+  
+  /* Monaco editor overrides */
+  .monaco-editor {
+    @apply font-mono;
+  }
+  
+  .monaco-editor .margin {
+    @apply bg-ghost-900;
+  }
+  
+  .monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+    @apply bg-ghost-600;
+  }
+}
+
+@layer utilities {
+  /* Accessibility utilities */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Reduced motion preferences */
+  .reduce-motion * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* High contrast mode */
+  .high-contrast {
+    --ghost-950: #000000;
+    --ghost-900: #111111;
+    --ghost-800: #222222;
+    --ghost-700: #444444;
+    --ghost-600: #666666;
+    --ghost-500: #888888;
+    --ghost-400: #aaaaaa;
+    --ghost-300: #cccccc;
+    --ghost-200: #eeeeee;
+    --ghost-100: #ffffff;
+    --spooky-purple: #ff00ff;
+    --spooky-green: #00ff00;
+    --spooky-orange: #ff8800;
+    --spooky-red: #ff0000;
+  }
+
+  /* Large text mode */
+  .large-text {
+    font-size: 1.2em;
+  }
+
+  .large-text .text-sm {
+    font-size: 1rem;
+  }
+
+  .large-text .text-xs {
+    font-size: 0.9rem;
+  }
+
+  /* Keyboard navigation focus styles */
+  .keyboard-navigation *:focus {
+    outline: 2px solid theme('colors.spooky.purple');
+    outline-offset: 2px;
+  }
+
+  .keyboard-navigation button:focus,
+  .keyboard-navigation input:focus,
+  .keyboard-navigation select:focus,
+  .keyboard-navigation textarea:focus {
+    box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.3);
+  }
+
+  /* Focus visible for better keyboard navigation */
+  .focus-visible:focus {
+    @apply outline-2 outline-spooky-purple outline-offset-2;
+  }
+}
