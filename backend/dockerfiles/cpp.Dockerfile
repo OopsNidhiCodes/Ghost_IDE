@@ -1,4 +1,4 @@
-FROM gcc:11-slim
+FROM gcc:13
 
 # Set working directory
 WORKDIR /app
@@ -12,9 +12,5 @@ RUN apt-get update && apt-get install -y \
 RUN useradd -m -u 1000 coderunner
 USER coderunner
 
-# Copy and set permissions for execution script
-COPY --chown=coderunner:coderunner execute.cpp /app/
-RUN chmod +x /app/execute.cpp
-
-# Default command
-CMD ["bash", "/app/execute.cpp"]
+# Default command (overridden at runtime)
+CMD ["g++"]

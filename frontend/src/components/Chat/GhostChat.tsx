@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
-import { socketService } from '../../services/socketService';
+import { websocketService } from '../../services/websocketService';
 import type { ChatMessage } from '../../types';
 
 interface GhostChatProps {
@@ -22,7 +22,7 @@ export const GhostChat: React.FC<GhostChatProps> = ({ className = '' }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [isInputFocused, setIsInputFocused] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -36,7 +36,21 @@ export const GhostChat: React.FC<GhostChatProps> = ({ className = '' }) => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || !sessionId) return;
+    console.log('handleSendMessage called - State:', {
+      hasMessage: !!inputMessage.trim(),
+      messageLength: inputMessage.trim().length,
+      hasSession: !!sessionId,
+      sessionId: sessionId
+    });
+    
+    if (!inputMessage.trim() || !sessionId) {
+      console.error('Send message BLOCKED:', {
+        hasMessage: !!inputMessage.trim(),
+        hasSession: !!sessionId,
+        sessionId: sessionId
+      });
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -53,7 +67,7 @@ export const GhostChat: React.FC<GhostChatProps> = ({ className = '' }) => {
     addChatMessage(userMessage);
 
     // Send to backend via WebSocket
-    socketService.sendGhostMessage(inputMessage.trim(), {
+    websocketService.sendGhostMessage(inputMessage.trim(), {
       currentCode: currentFile?.content,
       language: currentLanguage,
       recentOutput: executionResult || undefined,
@@ -190,17 +204,18 @@ export const GhostChat: React.FC<GhostChatProps> = ({ className = '' }) => {
         <div className={`relative transition-all duration-200 ${
           isInputFocused ? 'ring-2 ring-spooky-purple ring-opacity-50' : ''
         }`}>
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setIsInputFocused(false)}
             placeholder="Summon the ghost with your question..."
-            className="w-full bg-ghost-800 text-ghost-200 border border-ghost-600 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:border-spooky-purple transition-colors placeholder-ghost-500"
+            className="w-full bg-ghost-800 text-ghost-200 border border-ghost-600 rounded-lg px-4 py-3 pr-12 focus:outline-none focus:border-spooky-purple transition-colors placeholder-ghost-500 resize-none"
             disabled={!sessionId}
+            rows={2}
+            maxLength={500}
           />
           
           <button

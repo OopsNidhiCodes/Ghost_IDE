@@ -49,20 +49,8 @@ class WebSocketCodeExecutionService(CodeExecutionService):
                 execution_id=execution_id
             )
             
-            # Trigger on_run hook if enabled
-            if notify_hooks:
-                await self.message_router.notify_hook_triggered(
-                    session_id=session_id,
-                    hook_type="on_run",
-                    context={
-                        "language": request.language,
-                        "code_length": len(request.code),
-                        "execution_id": execution_id
-                    }
-                )
-            
             # Execute the code
-            result = await self.execute_code(request)
+            result = await self.execute_code(request, trigger_hooks=False)
             
             # Notify execution complete
             await self.message_router.notify_execution_complete(
@@ -71,23 +59,10 @@ class WebSocketCodeExecutionService(CodeExecutionService):
                 execution_id=execution_id
             )
             
-            # Trigger on_error hook if execution failed
-            if notify_hooks and result.exit_code != 0:
-                await self.message_router.notify_hook_triggered(
-                    session_id=session_id,
-                    hook_type="on_error",
-                    context={
-                        "language": request.language,
-                        "error": result.stderr,
-                        "exit_code": result.exit_code,
-                        "execution_id": execution_id
-                    }
-                )
-            
             return result
             
         except Exception as e:
-            logger.error(f"WebSocket code execution error: {e}")
+            logger.error(f"WebSocket code execution error: {e}", exc_info=True)
             
             # Create error result
             error_result = ExecutionResult(
@@ -103,18 +78,6 @@ class WebSocketCodeExecutionService(CodeExecutionService):
                 result=error_result,
                 execution_id=execution_id
             )
-            
-            # Trigger on_error hook
-            if notify_hooks:
-                await self.message_router.notify_hook_triggered(
-                    session_id=session_id,
-                    hook_type="on_error",
-                    context={
-                        "language": request.language,
-                        "error": str(e),
-                        "execution_id": execution_id
-                    }
-                )
             
             return error_result
     

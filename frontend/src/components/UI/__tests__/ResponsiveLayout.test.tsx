@@ -1,6 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ResponsiveLayout, ResponsivePanel, ResizableHandle } from '../../../components/Layout/ResponsiveLayout';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock the useAppStore hook
 const mockUpdateLayout = vi.fn();

@@ -1,0 +1,138 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-7.4.3, pluggy-1.6.0 -- C:\Projects\Kiroween\backend\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Projects\Kiroween\backend
+configfile: pytest.ini
+plugins: anyio-3.7.1, asyncio-0.21.1
+asyncio: mode=Mode.STRICT
+collecting ... collected 10 items
+
+tests/test_session_manager.py::TestSessionManager::test_create_session PASSED [ 10%]
+tests/test_session_manager.py::TestSessionManager::test_get_session_from_memory PASSED [ 20%]
+tests/test_session_manager.py::TestSessionManager::test_get_session_fallback_to_postgres FAILED [ 30%]
+tests/test_session_manager.py::TestSessionManager::test_update_session PASSED [ 40%]
+tests/test_session_manager.py::TestSessionManager::test_delete_session PASSED [ 50%]
+tests/test_session_manager.py::TestSessionManager::test_validate_session PASSED [ 60%]
+tests/test_session_manager.py::TestSessionManager::test_cleanup_expired_sessions PASSED [ 70%]
+tests/test_session_manager.py::TestSessionManager::test_get_active_sessions PASSED [ 80%]
+tests/test_session_manager.py::TestSessionManager::test_get_session_security_info PASSED [ 90%]
+tests/test_session_manager.py::TestSessionManagerIntegration::test_get_session_manager_singleton PASSED [100%]
+
+================================== FAILURES ===================================
+C:\Projects\Kiroween\backend\app\services\session_manager.py:133: AttributeError: 'coroutine' object has no attribute 'files'
+============================== warnings summary ===============================
+venv\Lib\site-packages\pydantic\_internal\_config.py:268
+  C:\Projects\Kiroween\backend\venv\Lib\site-packages\pydantic\_internal\_config.py:268: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.5/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+tests/test_session_manager.py::TestSessionManager::test_create_session
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:46: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_db_session.created_at = datetime.utcnow()
+
+tests/test_session_manager.py::TestSessionManager::test_create_session
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:47: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_db_session.last_activity = datetime.utcnow()
+
+tests/test_session_manager.py::TestSessionManager::test_create_session
+  C:\Projects\Kiroween\backend\app\services\session_manager.py:61: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    db.add(db_session)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_session_manager.py::TestSessionManager::test_create_session
+  C:\Projects\Kiroween\backend\app\services\session_manager.py:72: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/test_session_manager.py::TestSessionManager::test_create_session
+  C:\Projects\Kiroween\backend\app\services\session_manager.py:73: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    last_activity=datetime.utcnow()
+
+tests/test_session_manager.py::TestSessionManager::test_get_session_from_memory
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:77: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "created_at": datetime.utcnow().isoformat(),
+
+tests/test_session_manager.py::TestSessionManager::test_get_session_from_memory
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:78: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_activity": datetime.utcnow().isoformat()
+
+tests/test_session_manager.py::TestSessionManager::test_get_session_from_memory
+  C:\Projects\Kiroween\backend\app\services\session_manager.py:94: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    session.last_activity = datetime.utcnow()
+
+tests/test_session_manager.py::TestSessionManager::test_get_session_fallback_to_postgres
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:109: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_db_session.created_at = datetime.utcnow()
+
+tests/test_session_manager.py::TestSessionManager::test_get_session_fallback_to_postgres
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:110: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    mock_db_session.last_activity = datetime.utcnow()
+
+tests/test_session_manager.py::TestSessionManager::test_get_session_fallback_to_postgres
+  C:\Projects\Kiroween\backend\app\services\session_manager.py:120: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    .values(last_activity=datetime.utcnow())
+
+tests/test_session_manager.py::TestSessionManager::test_update_session
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:137: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "created_at": datetime.utcnow().isoformat(),
+
+tests/test_session_manager.py::TestSessionManager::test_update_session
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:138: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_activity": datetime.utcnow().isoformat()
+
+tests/test_session_manager.py::TestSessionManager::test_update_session
+  C:\Projects\Kiroween\backend\app\services\session_manager.py:175: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    session.last_activity = datetime.utcnow()
+
+tests/test_session_manager.py::TestSessionManager::test_update_session
+  C:\Projects\Kiroween\backend\venv\Lib\site-packages\sqlalchemy\sql\elements.py:5176: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self = super().__new__(cls, value)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_session_manager.py::TestSessionManager::test_validate_session
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:198: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "created_at": datetime.utcnow().isoformat(),
+
+tests/test_session_manager.py::TestSessionManager::test_validate_session
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:199: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_activity": datetime.utcnow().isoformat()
+
+tests/test_session_manager.py::TestSessionManager::test_cleanup_expired_sessions
+  C:\Projects\Kiroween\backend\app\services\session_manager.py:245: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    cutoff_date = datetime.utcnow() - timedelta(days=30)
+
+tests/test_session_manager.py::TestSessionManager::test_get_session_security_info
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:255: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "created_at": datetime.utcnow().isoformat(),
+
+tests/test_session_manager.py::TestSessionManager::test_get_session_security_info
+  C:\Projects\Kiroween\backend\tests\test_session_manager.py:256: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_activity": datetime.utcnow().isoformat()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_session_manager.py::TestSessionManager::test_get_session_fallback_to_postgres
+================== 1 failed, 9 passed, 21 warnings in 3.07s ===================
+.\venv\Scripts\python.exe : 
+sys:1: RuntimeWarning: 
+coroutine 'AsyncMockMixin._e
+xecute_mock_call' was never 
+awaited
+At line:1 char:1
++ .\venv\Scripts\python.exe 
+-m pytest tests/test_session
+_manager.py -v  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (sys:1  
+  : RuntimeW...s never aw   
+ aited:String) [], Remot    
+eException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+RuntimeWarning: Enable 
+tracemalloc to get the 
+object allocation traceback

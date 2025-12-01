@@ -98,40 +98,16 @@ class LanguageManager:
                     cpu_quota=50000
                 ),
                 validation_rules=[
-                    ValidationRule(
-                        pattern=r'import\s+os\b',
-                        message="Direct OS module import is not allowed for security reasons",
-                        severity="error"
-                    ),
-                    ValidationRule(
-                        pattern=r'import\s+subprocess\b',
-                        message="Subprocess module is not allowed for security reasons",
-                        severity="error"
-                    ),
-                    ValidationRule(
-                        pattern=r'__import__\s*\(',
-                        message="Dynamic imports are not allowed for security reasons",
-                        severity="error"
-                    ),
+                    # Docker containers provide isolation, only block code injection
                     ValidationRule(
                         pattern=r'eval\s*\(',
                         message="eval() function is dangerous and not allowed",
                         severity="error"
                     ),
                     ValidationRule(
-                        pattern=r'exec\s*\(',
+                        pattern=r'\bexec\s*\(',
                         message="exec() function is dangerous and not allowed",
                         severity="error"
-                    ),
-                    ValidationRule(
-                        pattern=r'open\s*\(',
-                        message="File operations are restricted in this environment",
-                        severity="warning"
-                    ),
-                    ValidationRule(
-                        pattern=r'input\s*\(',
-                        message="Interactive input is not supported in this environment",
-                        severity="warning"
                     )
                 ],
                 error_patterns=[
@@ -242,24 +218,10 @@ realm.list_spirits()
                     cpu_quota=50000
                 ),
                 validation_rules=[
-                    ValidationRule(
-                        pattern=r'require\s*\(\s*[\'"]fs[\'"]',
-                        message="File system access is not allowed for security reasons",
-                        severity="error"
-                    ),
-                    ValidationRule(
-                        pattern=r'require\s*\(\s*[\'"]child_process[\'"]',
-                        message="Child process module is not allowed for security reasons",
-                        severity="error"
-                    ),
+                    # Docker containers provide isolation, only block truly dangerous operations
                     ValidationRule(
                         pattern=r'eval\s*\(',
                         message="eval() function is dangerous and not allowed",
-                        severity="error"
-                    ),
-                    ValidationRule(
-                        pattern=r'Function\s*\(',
-                        message="Function constructor is not allowed for security reasons",
                         severity="error"
                     )
                 ],
@@ -490,18 +452,9 @@ public class Main {
                     cpu_quota=75000
                 ),
                 validation_rules=[
+                    # Docker containers provide isolation, only block actual system calls
                     ValidationRule(
-                        pattern=r'#include\s*<fstream>',
-                        message="File stream operations are restricted for security reasons",
-                        severity="warning"
-                    ),
-                    ValidationRule(
-                        pattern=r'#include\s*<cstdlib>',
-                        message="System library functions may be restricted",
-                        severity="warning"
-                    ),
-                    ValidationRule(
-                        pattern=r'system\s*\(',
+                        pattern=r'\bsystem\s*\(',
                         message="System calls are not allowed for security reasons",
                         severity="error"
                     ),

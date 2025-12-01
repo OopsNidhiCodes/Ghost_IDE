@@ -3,7 +3,7 @@
 Script to build all Docker containers for code execution
 """
 
-import docker
+import subprocess
 import sys
 from pathlib import Path
 import logging
@@ -35,12 +35,24 @@ def build_containers():
         }
     }
     
-    # Get Docker client
+    # Check if Docker is available
     try:
-        client = docker.from_env()
-        logger.info("Connected to Docker daemon")
+        result = subprocess.run(['docker', 'version'], 
+                              capture_output=True, 
+                              text=True, 
+                              timeout=10)
+        if result.returncode != 0:
+            logger.error("Docker is not running or not accessible")
+            return False
+        logger.info("Docker is available")
+    except FileNotFoundError:
+        logger.error("Docker command not found. Make sure Docker Desktop is installed.")
+        return False
+    except subprocess.TimeoutExpired:
+        logger.error("Docker command timed out. Make sure Docker Desktop is running.")
+        return False
     except Exception as e:
-        logger.error(f"Failed to connect to Docker: {e}")
+        logger.error(f"Failed to check Docker: {e}")
         return False
     
     # Get dockerfiles path
@@ -55,23 +67,29 @@ def build_containers():
         try:
             logger.info(f"Building {config['image']} for {lang}...")
             
-            # Build the image
-            image, build_logs = client.images.build(
-                path=str(dockerfiles_path),
-                dockerfile=config['dockerfile'],
-                tag=config['image'],
-                rm=True,
-                pull=True
-            )
+            # Build using docker CLI
+            cmd = [
+                'docker', 'build',
+                '-f', str(dockerfiles_path / config['dockerfile']),
+                '-t', config['image'],
+                '--rm',
+                str(dockerfiles_path)
+            ]
             
-            # Log build output
-            for log in build_logs:
-                if 'stream' in log:
-                    logger.debug(log['stream'].strip())
+            result = subprocess.run(cmd, 
+                                  capture_output=True, 
+                                  text=True,
+                                  timeout=600)  # 10 minute timeout
             
-            logger.info(f"Successfully built {config['image']}")
-            success_count += 1
+            if result.returncode == 0:
+                logger.info(f"Successfully built {config['image']}")
+                success_count += 1
+            else:
+                logger.error(f"Failed to build {config['image']}")
+                logger.error(f"Error: {result.stderr}")
             
+        except subprocess.TimeoutExpired:
+            logger.error(f"Build timed out for {config['image']}")
         except Exception as e:
             logger.error(f"Failed to build {config['image']}: {e}")
     

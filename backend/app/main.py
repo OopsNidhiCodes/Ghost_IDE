@@ -27,8 +27,9 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     
     # Initialize Ghost AI service
-    openai_api_key = os.getenv("OPENAI_API_KEY", "test-key")
-    ghost_ai_service = GhostAIService(api_key=openai_api_key)
+    # Prioritize GEMINI_API_KEY, fallback to OPENAI_API_KEY for backward compatibility
+    api_key = os.getenv("GEMINI_API_KEY", os.getenv("OPENAI_API_KEY", "test-key"))
+    ghost_ai_service = GhostAIService(api_key=api_key)
     
     # Initialize Hook Manager
     hook_manager = initialize_hook_manager(ghost_ai_service)
@@ -68,7 +69,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Frontend URLs
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],  # Frontend URLs
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Restrict methods
     allow_headers=["Content-Type", "Authorization", "X-Session-ID", "X-Requested-With"],

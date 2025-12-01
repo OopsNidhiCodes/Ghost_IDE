@@ -4,7 +4,8 @@ Handles secure code execution in Docker containers
 """
 
 import asyncio
-import docker
+import subprocess
+import sys
 import tempfile
 import os
 import re
@@ -28,44 +29,50 @@ class CodeExecutionService:
         if skip_docker_init:
             self.docker_client = None
         else:
+            # Try to connect to Docker using CLI verification
             try:
-                self.docker_client = docker.from_env()
-                self._ensure_images_built()
-            except Exception as e:
+                result = subprocess.run(['docker', 'version'], 
+                                      capture_output=True, 
+                                      text=True, 
+                                      timeout=5)
+                if result.returncode == 0:
+                    # Docker CLI works, but Python SDK might not
+                    # We'll use subprocess for execution instead
+                    self.docker_client = "cli"  # Use CLI mode
+                    logger.info("Docker available via CLI")
+                else:
+                    self.docker_client = None
+                    logger.warning("Docker not available")
+            except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
                 logger.warning(f"Docker not available: {e}")
                 self.docker_client = None
     
     def _ensure_images_built(self):
-        """Ensure all language Docker images are built"""
+        """Ensure all language Docker images are built - CLI mode only checks existence"""
         if not self.docker_client:
-            logger.warning("Docker client not available, skipping image build")
+            logger.warning("Docker client not available, skipping image check")
             return
             
-        dockerfiles_path = Path(__file__).parent.parent.parent / "dockerfiles"
-        
-        # Use language manager to get supported languages
+        # In CLI mode, we just check if images exist
+        # Build should be done via build_containers.py script
         for lang_key in self.language_manager.get_supported_languages():
             config = self.language_manager.get_language_config(lang_key)
             if not config:
                 continue
                 
             try:
-                # Check if image exists
-                self.docker_client.images.get(config.docker_image)
-                logger.info(f"Docker image {config.docker_image} already exists")
-            except docker.errors.ImageNotFound:
-                logger.info(f"Building Docker image {config.docker_image}")
-                try:
-                    self.docker_client.images.build(
-                        path=str(dockerfiles_path),
-                        dockerfile=config.dockerfile,
-                        tag=config.docker_image,
-                        rm=True
-                    )
-                    logger.info(f"Successfully built {config.docker_image}")
-                except Exception as e:
-                    logger.error(f"Failed to build {config.docker_image}: {e}")
-                    raise
+                result = subprocess.run(
+                    ['docker', 'images', '-q', config.docker_image],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    logger.info(f"Docker image {config.docker_image} exists")
+                else:
+                    logger.warning(f"Docker image {config.docker_image} not found. Run scripts/build_containers.py")
+            except Exception as e:
+                logger.error(f"Failed to check image {config.docker_image}: {e}")
     
     def validate_code(self, code: str, language: str) -> Tuple[bool, Optional[str]]:
         """
@@ -92,6 +99,21 @@ class CodeExecutionService:
         
         return True, None
     
+    def _get_execution_script(self, language: str, extension: str) -> str:
+        """Generate the shell script to execute code based on language"""
+        lang = language.value if hasattr(language, 'value') else str(language).lower()
+        
+        if lang == 'python':
+            return f'cat > code{extension} && python3 -u code{extension}'
+        elif lang == 'javascript':
+            return f'cat > code{extension} && node code{extension}'
+        elif lang == 'cpp':
+            return f'cat > code{extension} && g++ -o main code{extension} -std=c++17 && ./main'
+        elif lang == 'java':
+            return f'cat > Main.java && javac Main.java && java Main'
+        else:
+            return f'cat > code{extension} && python3 -u code{extension}'
+    
     async def execute_code(self, request: ExecutionRequest, trigger_hooks: bool = True) -> ExecutionResult:
         """
         Execute code in a Docker container
@@ -116,31 +138,90 @@ class CodeExecutionService:
             except Exception as e:
                 logger.warning(f"Failed to trigger on_run hook: {e}")
         
-        # Check if Docker is available
+        # Check if Docker is available - use fallback for development
         if not self.docker_client:
-            result = ExecutionResult(
-                stdout="",
-                stderr="Docker is not available for code execution",
-                exit_code=1,
-                execution_time=0.0
-            )
+            logger.warning("Docker not available, using fallback execution (Python only)")
             
-            # Trigger on_error hook if enabled
-            if trigger_hooks:
-                try:
-                    from .hook_manager import get_hook_manager
-                    hook_manager = get_hook_manager()
-                    if hook_manager:
-                        await hook_manager.on_error_hook(
-                            session_id=request.session_id,
-                            code=request.code,
-                            language=request.language.value,
-                            error=result.stderr
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to trigger on_error hook: {e}")
+            # Only support Python in fallback mode
+            lang_str = request.language.value if hasattr(request.language, 'value') else str(request.language)
+            if lang_str.lower() != "python":
+                docker_setup_msg = (
+                    f"Docker is required for {lang_str} execution.\n\n"
+                    "To enable code execution for all languages:\n"
+                    "1. Install Docker Desktop from https://www.docker.com/products/docker-desktop\n"
+                    "2. Start Docker Desktop\n"
+                    "3. Restart the GhostIDE backend server\n\n"
+                    "Python execution is available without Docker."
+                )
+                result = ExecutionResult(
+                    stdout="",
+                    stderr=docker_setup_msg,
+                    exit_code=1,
+                    execution_time=0.0
+                )
+                
+                # Trigger on_error hook if enabled
+                if trigger_hooks:
+                    try:
+                        from .hook_manager import get_hook_manager
+                        hook_manager = get_hook_manager()
+                        if hook_manager:
+                            await hook_manager.on_error_hook(
+                                session_id=request.session_id,
+                                code=request.code,
+                                language=lang_str,
+                                error=docker_setup_msg
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to trigger on_error hook: {e}")
+                
+                return result
             
-            return result
+            # Use fallback Python execution
+            try:
+                result = await self._fallback_python_execution(request, start_time)
+                
+                # Trigger on_error hook if execution failed
+                if trigger_hooks and result.exit_code != 0:
+                    try:
+                        from .hook_manager import get_hook_manager
+                        hook_manager = get_hook_manager()
+                        if hook_manager:
+                            await hook_manager.on_error_hook(
+                                session_id=request.session_id,
+                                code=request.code,
+                                language="python",
+                                error=result.stderr
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to trigger on_error hook: {e}")
+                
+                return result
+            except Exception as e:
+                logger.error(f"Fallback execution failed: {e}", exc_info=True)
+                result = ExecutionResult(
+                    stdout="",
+                    stderr=f"Fallback execution error: {str(e)}",
+                    exit_code=1,
+                    execution_time=0.0
+                )
+                
+                # Trigger on_error hook
+                if trigger_hooks:
+                    try:
+                        from .hook_manager import get_hook_manager
+                        hook_manager = get_hook_manager()
+                        if hook_manager:
+                            await hook_manager.on_error_hook(
+                                session_id=request.session_id,
+                                code=request.code,
+                                language="python",
+                                error=result.stderr
+                            )
+                    except Exception as e:
+                        logger.warning(f"Failed to trigger on_error hook: {e}")
+                
+                return result
         
         # Validate code first
         is_valid, error_msg = self.validate_code(request.code, request.language)
@@ -197,64 +278,66 @@ class CodeExecutionService:
             return result
         
         try:
-            # Run code in Docker container with enhanced security configuration
-            container = self.docker_client.containers.run(
-                config.docker_image,
-                stdin_open=True,
-                stdout=True,
-                stderr=True,
-                detach=True,
-                remove=True,
-                mem_limit=config.compiler_config.memory_limit,
-                cpu_quota=config.compiler_config.cpu_quota,
-                network_disabled=True,  # No network access
-                read_only=True,    # Read-only filesystem
-                tmpfs={
-                    '/tmp': 'rw,noexec,nosuid,nodev,size=50m',  # 50MB temp space with security flags
-                    '/var/tmp': 'rw,noexec,nosuid,nodev,size=10m'  # Additional temp space
-                },
-                user='1000:1000',   # Non-root user
-                # Additional security options
-                cap_drop=['ALL'],  # Drop all capabilities
-                security_opt=['no-new-privileges:true'],  # Prevent privilege escalation
-                pids_limit=50,     # Limit number of processes
-                ulimits=[
-                    docker.types.Ulimit(name='nproc', soft=50, hard=50),  # Process limit
-                    docker.types.Ulimit(name='nofile', soft=100, hard=100),  # File descriptor limit
-                    docker.types.Ulimit(name='fsize', soft=10485760, hard=10485760),  # 10MB file size limit
-                ],
-                # Environment restrictions
-                environment={
-                    'PATH': '/usr/local/bin:/usr/bin:/bin',  # Restricted PATH
-                    'HOME': '/tmp',  # Set home to temp directory
-                    'USER': 'ghostuser',
-                    'SHELL': '/bin/sh'
-                },
-                # Additional mount restrictions
-                volumes={},  # No volume mounts
-                working_dir='/tmp'  # Set working directory to temp
-            )
-            
-            # Send code to container
-            container_socket = container.attach_socket(
-                params={'stdin': 1, 'stdout': 1, 'stderr': 1, 'stream': 1}
-            )
-            
-            # Write code to stdin
-            container_socket._sock.send(request.code.encode('utf-8'))
-            container_socket._sock.shutdown(1)  # Close stdin
-            
-            # Wait for execution with timeout from language config
+            # Run code in Docker container using CLI
             timeout = min(request.timeout, config.compiler_config.timeout)
+            
+            # Set PATH based on language (Java needs special path)
+            lang = request.language.value if hasattr(request.language, 'value') else str(request.language).lower()
+            if lang == 'java':
+                path_env = '/opt/java/openjdk/bin:/usr/local/bin:/usr/bin:/bin'
+                # Java needs more resources
+                pids_limit = 100
+                nproc_limit = '100:100'
+            else:
+                path_env = '/usr/local/bin:/usr/bin:/bin'
+                pids_limit = 50
+                nproc_limit = '50:50'
+            
+            # Prepare Docker run command with security settings
+            docker_cmd = [
+                'docker', 'run',
+                '--rm',  # Remove container after execution
+                '-i',    # Interactive mode for stdin
+                f'--memory={config.compiler_config.memory_limit}',
+                f'--cpus={config.compiler_config.cpu_quota / 100000}',
+                '--network=none',  # No network access
+                '--tmpfs=/tmp:rw,exec,nosuid,nodev,size=50m',  # Allow exec for compiled binaries
+                '--user=1000:1000',  # Non-root user
+                '--cap-drop=ALL',    # Drop all capabilities
+                '--security-opt=no-new-privileges:true',
+                f'--pids-limit={pids_limit}',
+                f'--ulimit=nproc={nproc_limit}',
+                '--ulimit=nofile=100:100',
+                '--ulimit=fsize=10485760:10485760',
+                '-e', f'PATH={path_env}',
+                '-e', 'HOME=/tmp',
+                '-w', '/tmp',
+                config.docker_image,
+                'sh', '-c',
+                self._get_execution_script(request.language, config.extension)
+            ]
+            
+            # Execute with timeout using subprocess.run for Windows compatibility
             try:
-                exit_code = container.wait(timeout=timeout)['StatusCode']
-            except Exception:
-                # Timeout or other error
-                container.kill()
+                result_subprocess = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: subprocess.run(
+                        docker_cmd,
+                        input=request.code.encode('utf-8'),
+                        capture_output=True,
+                        timeout=timeout
+                    )
+                )
+                
+                stdout = result_subprocess.stdout.decode('utf-8', errors='replace')
+                stderr = result_subprocess.stderr.decode('utf-8', errors='replace')
+                exit_code = result_subprocess.returncode
+                        
+            except subprocess.TimeoutExpired:
                 execution_time = (datetime.now() - start_time).total_seconds()
                 result = ExecutionResult(
                     stdout="",
-                    stderr=f"Execution timed out after {timeout} seconds or failed",
+                    stderr=f"Execution timed out after {timeout} seconds",
                     exit_code=124,
                     execution_time=execution_time
                 )
@@ -276,19 +359,8 @@ class CodeExecutionService:
                 
                 return result
             
-            # Get output
-            logs = container.logs(stdout=True, stderr=True, stream=False)
-            output = logs.decode('utf-8', errors='replace')
-            
-            # Split stdout and stderr (simplified approach)
-            stdout = output
-            stderr = ""
-            
-            if exit_code != 0:
-                stderr = output
-                stdout = ""
-                
-                # Parse error message using language manager
+            # Parse error message if execution failed
+            if exit_code != 0 and stderr:
                 parsed_error = self.language_manager.parse_error_message(stderr, request.language)
                 if parsed_error.get("formatted"):
                     stderr = parsed_error["formatted"]
@@ -319,7 +391,7 @@ class CodeExecutionService:
             
             return result
             
-        except docker.errors.ContainerError as e:
+        except FileNotFoundError as e:
             execution_time = (datetime.now() - start_time).total_seconds()
             result = ExecutionResult(
                 stdout="",
@@ -347,7 +419,7 @@ class CodeExecutionService:
             
         except Exception as e:
             execution_time = (datetime.now() - start_time).total_seconds()
-            logger.error(f"Code execution error: {e}")
+            logger.error(f"Code execution error: {e}", exc_info=True)
             result = ExecutionResult(
                 stdout="",
                 stderr=f"Execution error: {str(e)}",
@@ -416,7 +488,107 @@ class CodeExecutionService:
     def validate_code_detailed(self, code: str, language: str) -> Tuple[bool, List[Dict[str, Any]]]:
         """Get detailed validation results including warnings"""
         return self.language_manager.validate_code(code, language)
+    
+    async def _fallback_python_execution(self, request: ExecutionRequest, start_time: datetime) -> ExecutionResult:
+        """
+        Fallback Python execution without Docker (for development only)
+        WARNING: This is NOT secure and should only be used in development!
+        """
+        import subprocess
+        import sys
+        
+        try:
+            # Create a temporary file with the code
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                f.write(request.code)
+                temp_file = f.name
+            
+            try:
+                # Execute with timeout
+                timeout = min(request.timeout, 30)
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    temp_file,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                # Send input if provided
+                stdin_data = request.input.encode('utf-8') if request.input else None
+                
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        process.communicate(input=stdin_data),
+                        timeout=timeout
+                    )
+                    exit_code = process.returncode
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await process.wait()
+                    execution_time = (datetime.now() - start_time).total_seconds()
+                    return ExecutionResult(
+                        stdout="",
+                        stderr=f"Execution timed out after {timeout} seconds",
+                        exit_code=124,
+                        execution_time=execution_time,
+                        timed_out=True
+                    )
+                
+                execution_time = (datetime.now() - start_time).total_seconds()
+                
+                return ExecutionResult(
+                    stdout=stdout.decode('utf-8', errors='replace'),
+                    stderr=stderr.decode('utf-8', errors='replace'),
+                    exit_code=exit_code or 0,
+                    execution_time=execution_time
+                )
+                
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file)
+                except:
+                    pass
+                    
+        except Exception as e:
+            execution_time = (datetime.now() - start_time).total_seconds()
+            return ExecutionResult(
+                stdout="",
+                stderr=f"Fallback execution error: {str(e)}",
+                exit_code=1,
+                execution_time=execution_time
+            )
 
 
 # Global instance
-code_execution_service = CodeExecutionService()
+class _CodeExecutionServiceProxy:
+    """Lazy proxy so tests can patch the service easily."""
+
+    def __init__(self):
+        self._instance: Optional[CodeExecutionService] = None
+        self._class_token = CodeExecutionService
+
+    def _ensure_instance(self) -> CodeExecutionService:
+        current_cls = CodeExecutionService
+        if self._instance is None or current_cls is not self._class_token:
+            enable_docker = os.getenv("ENABLE_DOCKER_EXECUTION", "").lower() in ("1", "true", "yes")
+            self._instance = current_cls(skip_docker_init=not enable_docker)
+            self._class_token = current_cls
+        return self._instance
+
+    def __getattr__(self, item):
+        return getattr(self._ensure_instance(), item)
+
+    def set_instance(self, instance: CodeExecutionService):
+        self._instance = instance
+        if instance is not None:
+            self._class_token = instance.__class__
+
+
+code_execution_service = _CodeExecutionServiceProxy()
+
+
+def get_code_execution_service() -> CodeExecutionService:
+    """Retrieve the underlying code execution service instance."""
+    return code_execution_service._ensure_instance()

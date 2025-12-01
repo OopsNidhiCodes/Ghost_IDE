@@ -11,7 +11,7 @@ export const LanguageExamples: React.FC<LanguageExamplesProps> = ({
   className = '', 
   onExampleSelect 
 }) => {
-  const { currentLanguage, addFile, setCurrentLanguage } = useAppStore();
+  const { currentLanguage, addFile } = useAppStore();
   const [examples, setExamples] = useState<LanguageExample[]>([]);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);

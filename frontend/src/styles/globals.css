@@ -10,6 +10,7 @@
     transform: translateX(100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -21,6 +22,7 @@
     transform: translateX(0);
     opacity: 1;
   }
+
   to {
     transform: translateX(100%);
     opacity: 0;
@@ -31,19 +33,31 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
 }
 
 @keyframes shake {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateX(0);
   }
-  10%, 30%, 50%, 70%, 90% {
+
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
     transform: translateX(-2px);
   }
-  20%, 40%, 60%, 80% {
+
+  20%,
+  40%,
+  60%,
+  80% {
     transform: translateX(2px);
   }
 }
@@ -68,37 +82,82 @@
   * {
     @apply border-ghost-700;
   }
-  
+
   body {
     @apply bg-ghost-950 text-ghost-100 font-mono;
   }
-  
+
+  /* Light mode theme - color inversions */
+  body.ghost-light .bg-ghost-950 {
+    @apply bg-ghost-50;
+  }
+
+  body.ghost-light .bg-ghost-900 {
+    @apply bg-ghost-100;
+  }
+
+  body.ghost-light .bg-ghost-800 {
+    @apply bg-ghost-200;
+  }
+
+  body.ghost-light .bg-ghost-700 {
+    @apply bg-ghost-300;
+  }
+
+  body.ghost-light .bg-ghost-600 {
+    @apply bg-ghost-400;
+  }
+
+  body.ghost-light .text-ghost-100 {
+    @apply text-ghost-900;
+  }
+
+  body.ghost-light .text-ghost-200 {
+    @apply text-ghost-800;
+  }
+
+  body.ghost-light .text-ghost-300 {
+    @apply text-ghost-700;
+  }
+
+  body.ghost-light .text-ghost-400 {
+    @apply text-ghost-600;
+  }
+
+  body.ghost-light .border-ghost-700 {
+    @apply border-ghost-300;
+  }
+
+  body.ghost-light .border-ghost-600 {
+    @apply border-ghost-400;
+  }
+
   /* Custom scrollbar for spooky theme */
   ::-webkit-scrollbar {
     @apply w-2;
   }
-  
+
   ::-webkit-scrollbar-track {
     @apply bg-ghost-900;
   }
-  
+
   ::-webkit-scrollbar-thumb {
     @apply bg-ghost-700 rounded-full;
   }
-  
+
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-ghost-600;
   }
-  
+
   /* Scrollbar utility classes */
   .scrollbar-thin {
     scrollbar-width: thin;
   }
-  
+
   .scrollbar-thumb-ghost-600::-webkit-scrollbar-thumb {
     @apply bg-ghost-600;
   }
-  
+
   .scrollbar-track-ghost-800::-webkit-scrollbar-track {
     @apply bg-ghost-800;
   }
@@ -106,68 +165,63 @@
 
 @layer components {
   .spooky-button {
-    @apply bg-spooky-purple hover:bg-spooky-purple/80 text-white px-4 py-2 rounded-lg 
-           transition-all duration-200 hover:shadow-lg hover:shadow-spooky-purple/25
-           border border-spooky-purple/50 hover:border-spooky-purple;
+    @apply bg-spooky-purple hover:bg-spooky-purple/80 text-white px-4 py-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:shadow-spooky-purple/25 border border-spooky-purple/50 hover:border-spooky-purple;
   }
-  
+
   .spooky-input {
-    @apply bg-ghost-800 border border-ghost-600 rounded-lg px-3 py-2 
-           text-ghost-100 placeholder-ghost-400 focus:border-spooky-purple 
-           focus:ring-1 focus:ring-spooky-purple focus:outline-none
-           transition-colors duration-200;
+    @apply bg-ghost-800 border border-ghost-600 rounded-lg px-3 py-2 text-ghost-100 placeholder-ghost-400 focus:border-spooky-purple focus:ring-1 focus:ring-spooky-purple focus:outline-none transition-colors duration-200;
   }
-  
+
   .spooky-panel {
-    @apply bg-ghost-900 border border-ghost-700 rounded-lg p-4 
-           shadow-lg backdrop-blur-sm;
+    @apply bg-ghost-900 border border-ghost-700 rounded-lg p-4 shadow-lg backdrop-blur-sm;
   }
-  
+
   .ghost-glow {
     @apply animate-spooky-glow;
   }
-  
+
   .ghost-float {
     @apply animate-ghost-float;
   }
-  
+
   /* Editor specific styles */
   .editor-container {
     @apply relative overflow-hidden;
   }
-  
+
   .editor-header {
     @apply bg-ghost-900 border-b border-ghost-700 px-4 py-2 flex items-center justify-between;
   }
-  
+
   /* Custom slider styles for preferences */
   .slider {
     @apply bg-ghost-700 rounded-lg appearance-none cursor-pointer;
   }
-  
+
   .slider::-webkit-slider-thumb {
     @apply appearance-none w-4 h-4 bg-spooky-purple rounded-full cursor-pointer;
   }
-  
+
   .slider::-moz-range-thumb {
     @apply w-4 h-4 bg-spooky-purple rounded-full cursor-pointer border-0;
   }
-  
+
   /* Monaco editor overrides */
   .monaco-editor {
     @apply font-mono;
   }
-  
+
   .monaco-editor .margin {
     @apply bg-ghost-900;
   }
-  
-  .monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+
+  .monaco-editor .monaco-scrollable-element>.scrollbar>.slider {
     @apply bg-ghost-600;
   }
 }
 
 @layer utilities {
+
   /* Accessibility utilities */
   .sr-only {
     position: absolute;

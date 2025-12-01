@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import Editor, { Monaco } from '@monaco-editor/react';
 import { useAppStore } from '../../store/useAppStore';
-import { socketService } from '../../services/socketService';
-import { LanguageConfig } from '../../types';
+import { websocketService } from '../../services/websocketService';
+
 
 interface CodeEditorProps {
   className?: string;
@@ -16,13 +16,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
     currentLanguage,
     sessionId,
   } = useAppStore();
-  
+
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Language configurations
-  const languageConfigs: Record<string, LanguageConfig> = {
+  const languageConfigs = {
     python: {
       name: 'Python',
       extension: '.py',
@@ -78,8 +78,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
   };
 
   // Get current language config
-  const getCurrentLanguageConfig = useCallback((): LanguageConfig => {
-    return languageConfigs[currentLanguage] || languageConfigs.python;
+  const getCurrentLanguageConfig = useCallback(() => {
+    return (languageConfigs as any)[currentLanguage] || languageConfigs.python;
   }, [currentLanguage]);
 
   // Handle editor mount
@@ -149,7 +149,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
-      
+
       autoSaveTimeoutRef.current = setTimeout(() => {
         handleSave(value);
       }, 2000); // Auto-save after 2 seconds of inactivity
@@ -162,8 +162,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
 
     const codeToSave = content || currentFile.content;
 
-    // Save file to backend
-    socketService.saveFile({
+    // Save via WebSocket for real-time sync
+    websocketService.saveFile({
       id: currentFile.id,
       name: currentFile.name,
       content: codeToSave,
@@ -171,7 +171,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
     });
 
     // Trigger save hook
-    socketService.triggerHook('on_save', {
+    websocketService.triggerHook('on_save', {
       code: codeToSave,
       language: currentFile.language,
     });
@@ -183,19 +183,26 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
   const handleRunCode = useCallback(() => {
     if (!currentFile || !sessionId) return;
 
-    socketService.executeCode(currentFile.content, currentFile.language);
+    websocketService.executeCode(currentFile.content, currentFile.language);
   }, [currentFile, sessionId]);
 
-  // Update editor language when current language changes
+  // Update editor language and content when current language changes
   useEffect(() => {
-    if (editorRef.current && monacoRef.current) {
+    if (editorRef.current && monacoRef.current && currentFile) {
       const config = getCurrentLanguageConfig();
       const model = editorRef.current.getModel();
       if (model) {
+        // Update language
         monacoRef.current.editor.setModelLanguage(model, config.monacoLanguage);
+
+        // If file language doesn't match, it means language was switched
+        if (currentFile.language !== currentLanguage) {
+          // File will be updated by the parent component
+          console.log('Language changed from', currentFile.language, 'to', currentLanguage);
+        }
       }
     }
-  }, [currentLanguage, getCurrentLanguageConfig]);
+  }, [currentLanguage, currentFile, getCurrentLanguageConfig]);
 
   // Update editor font size when preferences change
   useEffect(() => {
@@ -229,7 +236,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
           </span>
           <span className="text-ghost-400 text-sm">({config.name})</span>
         </div>
-        
+
         <div className="flex items-center space-x-2">
           {preferences.autoSave && (
             <span className="text-xs text-spooky-green flex items-center">
@@ -237,7 +244,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
               Auto-save
             </span>
           )}
-          
+
           <button
             onClick={() => handleSave()}
             className="text-ghost-400 hover:text-ghost-200 transition-colors text-sm"
@@ -245,7 +252,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className = '' }) => {
           >
             💾
           </button>
-          
+
           <button
             onClick={handleRunCode}
             className="text-ghost-400 hover:text-spooky-green transition-colors text-sm"

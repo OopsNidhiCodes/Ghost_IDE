@@ -54,6 +54,7 @@ class IntegrationService {
   private autoSaveInterval: NodeJS.Timeout | null = null;
   private sessionSyncInterval: NodeJS.Timeout | null = null;
   private isInitialized = false;
+  private isInitializing = false;  // Add flag to prevent concurrent initializations
   private debouncedAutoSave: (() => void) | null = null;
   private throttledSessionSync: (() => void) | null = null;
 
@@ -61,14 +62,38 @@ class IntegrationService {
    * Initialize the integration service and establish all connections
    */
   async initialize(sessionId?: string): Promise<string> {
+    // Prevent multiple simultaneous initializations
+    if (this.isInitialized) {
+      const { sessionId: currentSessionId } = useAppStore.getState();
+      console.log('IntegrationService already initialized, returning current session');
+      return currentSessionId || '';
+    }
+
+    // Prevent concurrent initialization attempts
+    if (this.isInitializing) {
+      console.log('IntegrationService initialization already in progress, waiting...');
+      // Wait for current initialization to complete
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (this.isInitialized || !this.isInitializing) {
+            clearInterval(checkInterval);
+            const { sessionId: currentSessionId } = useAppStore.getState();
+            resolve(currentSessionId || '');
+          }
+        }, 100);
+      });
+    }
+
+    this.isInitializing = true;
+
     return performanceService.measurePerformance('sessionLoad', async () => {
       try {
         // 1. Preload critical data for better performance
         await performanceService.preloadCriticalData();
-        
+
         // 2. Optimize for mobile if needed
         performanceService.optimizeForMobile();
-        
+
         // 3. Health check backend
         const isHealthy = await apiService.healthCheck();
         if (!isHealthy) {
@@ -77,22 +102,23 @@ class IntegrationService {
 
         // 4. Initialize or restore session
         const finalSessionId = await this.initializeSession(sessionId);
-        
+
         // 5. Connect WebSocket
         await websocketService.connect(finalSessionId);
-        
+
         // 6. Start auto-save and sync intervals
         this.startAutoSave();
         this.startSessionSync();
-        
+
         // 7. Set up hook integrations
         this.setupHookIntegrations();
-        
+
         // 8. Set up caching for better performance
         this.setupCaching();
-        
+
         this.isInitialized = true;
-        
+        this.isInitializing = false;
+
         const { showSuccess } = useNotificationStore.getState();
         showSuccess(
           '👻 Welcome to the Spirit Realm',
@@ -102,6 +128,7 @@ class IntegrationService {
 
         return finalSessionId;
       } catch (error) {
+        this.isInitializing = false;
         errorService.handleError(error as Error, {
           component: 'IntegrationService',
           action: 'initialize',
@@ -117,26 +144,22 @@ class IntegrationService {
   async executeCodeWorkflow(workflow: CodeExecutionWorkflow): Promise<void> {
     return performanceService.measurePerformance('codeExecution', async () => {
       const { setExecuting } = useAppStore.getState();
-      
-      try {
-        // 1. Check cache for recent identical executions (disabled for now)
-        // const cacheKey = `execution_${workflow.sessionId}_${btoa(workflow.code)}_${workflow.language}`;
-        // const cachedResult = performanceService.get(cacheKey);
 
-        // 2. Validate code and language
+      try {
+        // 1. Validate code and language
         const isValid = await languageService.validateCode(workflow.code, workflow.language);
         if (!isValid) {
           throw new Error('Code validation failed');
         }
 
-        // 3. Trigger on_run hook
+        // 2. Trigger on_run hook
         websocketService.triggerHook('on_run', {
           code: workflow.code,
           language: workflow.language,
           timestamp: new Date().toISOString(),
         });
 
-        // 4. Start execution via WebSocket (real-time updates)
+        // 3. Start execution via WebSocket (real-time updates)
         setExecuting(true);
         websocketService.executeCode(workflow.code, workflow.language, workflow.input);
 
@@ -145,7 +168,7 @@ class IntegrationService {
 
       } catch (error) {
         setExecuting(false);
-        
+
         // Trigger on_error hook
         websocketService.triggerHook('on_error', {
           error: (error as Error).message,
@@ -159,7 +182,7 @@ class IntegrationService {
           action: 'executeCodeWorkflow',
           sessionId: workflow.sessionId,
         });
-        
+
         throw error;
       }
     });
@@ -170,8 +193,8 @@ class IntegrationService {
    */
   async switchLanguageWorkflow(workflow: LanguageSwitchWorkflow): Promise<void> {
     return performanceService.measurePerformance('languageSwitch', async () => {
-      const { currentFile, updateFile, setCurrentLanguage, sessionId } = useAppStore.getState();
-      
+      const { currentFile, addFile, setCurrentLanguage } = useAppStore.getState();
+
       try {
         // 1. Get language configuration
         const languageConfig = await languageService.getLanguageInfo(workflow.newLanguage);
@@ -183,30 +206,30 @@ class IntegrationService {
         if (workflow.preserveSession && currentFile) {
           await this.saveCurrentFile();
         }
-        
+
         // 3. Update language in store
         setCurrentLanguage(workflow.newLanguage);
 
-        // 4. Update current file language if it exists
-        if (currentFile) {
-          updateFile(currentFile.id, currentFile.content);
-          
-          // Update file extension based on new language
-          const newExtension = languageConfig.extension;
-          const newName = currentFile.name.replace(/\.[^/.]+$/, newExtension);
-          
-          // Update file in backend
-          await apiService.put(`/api/v1/sessions/${sessionId}/files/${currentFile.id}`, {
-            name: newName,
-            language: workflow.newLanguage,
-          });
-        }
+        // 4. Get template for the new language
+        const template = await languageService.getLanguageTemplate(workflow.newLanguage);
+        const templateCode = template || `# Welcome to ${languageConfig.name}\n# Start coding here\n`;
+
+        // 5. Create a new file with the template
+        const newFile = {
+          id: `file_${Date.now()}`,
+          name: `untitled${languageConfig.extension}`,
+          content: templateCode,
+          language: workflow.newLanguage,
+          lastModified: new Date(),
+        };
+
+        addFile(newFile);
 
         // 5. Load language-specific examples (optional)
         await languageService.getLanguageExamples(workflow.newLanguage).catch(() => {
           // Examples are optional, don't fail if not available
         });
-        
+
         // 6. Notify Ghost AI about language switch
         websocketService.sendGhostMessage(
           `I've switched to ${workflow.newLanguage}. Any spooky wisdom for this realm?`,
@@ -240,7 +263,7 @@ class IntegrationService {
   async ghostInteractionWorkflow(message: string, _context?: any): Promise<void> {
     return performanceService.measurePerformance('aiResponse', async () => {
       const { sessionId } = useAppStore.getState();
-      
+
       try {
         // 1. Send message via WebSocket for real-time response
         websocketService.sendChatMessage(message);
@@ -263,7 +286,7 @@ class IntegrationService {
    */
   async saveCurrentFile(): Promise<void> {
     const { currentFile, sessionId } = useAppStore.getState();
-    
+
     if (!currentFile || !sessionId) {
       return;
     }
@@ -307,25 +330,30 @@ class IntegrationService {
   async restoreSession(sessionId: string): Promise<SessionData | null> {
     try {
       const response = await apiService.get<SessionData>(`/api/v1/sessions/${sessionId}`);
-      
+
       if (response.success && response.data) {
         // Update store with restored data
-        const { 
-          setSessionId, 
-          addFile, 
-          setCurrentLanguage, 
-          addChatMessage, 
-          updatePreferences 
+        const {
+          setSessionId,
+          addFile,
+          setCurrentLanguage,
+          addChatMessage,
+          updatePreferences
         } = useAppStore.getState();
 
+        console.log('Session restored successfully:', response.data.id);
         setSessionId(response.data.id);
         setCurrentLanguage(response.data.currentLanguage);
-        updatePreferences({
-          theme: response.data.preferences.theme as 'ghost-dark' | 'ghost-light',
-          fontSize: response.data.preferences.font_size || 14,
-          autoSave: response.data.preferences.auto_save,
-          ghostPersonality: 'spooky',
-        });
+
+        // Update preferences with safe defaults
+        if (response.data.preferences) {
+          updatePreferences({
+            theme: (response.data.preferences.theme as 'ghost-dark' | 'ghost-light') || 'ghost-dark',
+            fontSize: response.data.preferences.font_size || 14,
+            autoSave: response.data.preferences.auto_save ?? true,
+            ghostPersonality: 'spooky',
+          });
+        }
 
         // Restore files
         response.data.files.forEach(file => {
@@ -345,7 +373,7 @@ class IntegrationService {
 
         return response.data;
       }
-      
+
       return null;
     } catch (error) {
       errorService.handleError(error as Error, {
@@ -373,6 +401,7 @@ class IntegrationService {
       });
 
       if (response.success && response.data?.session) {
+        console.log('Session created successfully:', response.data.session.id);
         useAppStore.getState().setSessionId(response.data.session.id);
         return response.data.session.id;
       }
@@ -393,7 +422,7 @@ class IntegrationService {
   private setupCaching(): void {
     // Set up editor optimizations
     performanceService.optimizeEditor();
-    
+
     // Cache user preferences in performance service
     const preferences = localStorage.getItem('ghost-ide-preferences');
     if (preferences) {
@@ -432,17 +461,43 @@ class IntegrationService {
    * Initialize session (create new or restore existing)
    */
   private async initializeSession(sessionId?: string): Promise<string> {
+    const { sessionId: currentSessionId, setSessionId } = useAppStore.getState();
+    console.log('initializeSession called:', { urlSessionId: sessionId, storeSessionId: currentSessionId });
+
+    // If we already have this session in the store, don't re-initialize
+    if (sessionId && currentSessionId === sessionId) {
+      console.log('Session already initialized:', sessionId);
+      return sessionId;
+    }
+
     if (sessionId) {
       // Try to restore existing session
       const restored = await this.restoreSession(sessionId);
       if (restored) {
+        console.log('Session restored, setting in store:', sessionId);
+        setSessionId(sessionId);
         return sessionId;
       }
     }
 
-    // Create new session
-    const newSessionId = await this.createSession();
-    return newSessionId || '';
+    // Create new session only if we don't have a sessionId in URL
+    if (!sessionId) {
+      const newSessionId = await this.createSession();
+      console.log('New session created:', newSessionId);
+      if (newSessionId) {
+        setSessionId(newSessionId);
+        console.log('Session ID set in store:', newSessionId);
+      }
+      return newSessionId || '';
+    }
+
+    // Fallback: ensure we set whatever sessionId we have
+    if (sessionId && !currentSessionId) {
+      console.log('Setting fallback sessionId in store:', sessionId);
+      setSessionId(sessionId);
+    }
+
+    return sessionId;
   }
 
   /**
@@ -450,7 +505,7 @@ class IntegrationService {
    */
   private startAutoSave(): void {
     const { preferences } = useAppStore.getState();
-    
+
     if (preferences.autoSave && this.debouncedAutoSave) {
       this.autoSaveInterval = setInterval(() => {
         this.debouncedAutoSave!();
@@ -474,7 +529,7 @@ class IntegrationService {
    */
   private async syncSession(): Promise<void> {
     const { sessionId, files, chatMessages, preferences } = useAppStore.getState();
-    
+
     if (sessionId) {
       try {
         await apiService.put(`/api/v1/sessions/${sessionId}/sync`, {
@@ -503,15 +558,15 @@ class IntegrationService {
       clearInterval(this.autoSaveInterval);
       this.autoSaveInterval = null;
     }
-    
+
     if (this.sessionSyncInterval) {
       clearInterval(this.sessionSyncInterval);
       this.sessionSyncInterval = null;
     }
-    
+
     // Clean up performance service
     performanceService.cleanup();
-    
+
     websocketService.disconnect();
     this.isInitialized = false;
   }

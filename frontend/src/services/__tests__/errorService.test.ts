@@ -1,11 +1,11 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { ErrorService, errorService } from '../errorService';
+import { errorService } from '../errorService';
 import { useNotificationStore } from '../../store/useNotificationStore';
 
 // Mock the notification store
 vi.mock('../../store/useNotificationStore');
 
-const mockUseNotificationStore = useNotificationStore as any;
+useNotificationStore as any;
 
 // Mock localStorage
 const mockLocalStorage = {

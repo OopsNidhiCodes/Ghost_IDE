@@ -107,10 +107,11 @@ class MessageRouter:
             execution_id: Optional execution identifier
         """
         try:
+            payload = result.model_dump(by_alias=True)
             message = ExecutionCompleteMessage(
                 session_id=session_id,
                 data={
-                    "result": result.model_dump(),
+                    "result": payload,
                     "execution_id": execution_id
                 }
             )

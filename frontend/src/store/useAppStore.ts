@@ -122,7 +122,10 @@ export const useAppStore = create<AppState>()(
       },
       
       // Actions
-      setSessionId: (sessionId) => set({ sessionId }),
+      setSessionId: (sessionId) => {
+        console.log('Store: Setting sessionId to:', sessionId);
+        set({ sessionId });
+      },
       setConnected: (isConnected) => set({ isConnected }),
       
       // File management

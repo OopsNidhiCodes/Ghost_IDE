@@ -43,6 +43,13 @@ class HookToggleRequest(BaseModel):
     enabled: bool
 
 
+class HookTriggerRequest(BaseModel):
+    """Request model for manually triggering hooks"""
+    type: HookEventType
+    session_id: str
+    data: Dict[str, Any] = {}
+
+
 @router.get("/status", response_model=HookStatusResponse)
 async def get_hook_status():
     """Get current hook system status and statistics"""
@@ -59,6 +66,34 @@ async def get_hook_status():
         failed_responses=stats["failed_responses"],
         success_rate=stats["success_rate"]
     )
+
+
+@router.post("/trigger")
+async def trigger_hook(request: HookTriggerRequest):
+    """Manually trigger a hook event"""
+    hook_manager = get_hook_manager()
+    if not hook_manager:
+        raise HTTPException(status_code=503, detail="Hook manager not initialized")
+    
+    try:
+        response = await hook_manager.trigger_hook(
+            request.type,
+            request.session_id,
+            request.data
+        )
+        if not isinstance(response, (dict, list, str, int, float, type(None))):
+            response_payload = str(response)
+        else:
+            response_payload = response
+        return {
+            "success": True,
+            "hook_type": request.type.value,
+            "session_id": request.session_id,
+            "response": response_payload
+        }
+    except Exception as e:
+        logger.error(f"Failed to trigger hook {request.type}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger hook: {str(e)}")
 
 
 @router.get("/executions", response_model=List[HookExecutionResponse])

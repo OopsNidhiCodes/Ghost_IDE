@@ -29,7 +29,8 @@ export interface LanguageExample {
 }
 
 class LanguageService {
-  private baseUrl = '/api/v1/languages';
+  private backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+
   private languageCache = new Map<string, LanguageConfig>();
   private supportedLanguagesCache: string[] | null = null;
 
@@ -42,11 +43,11 @@ class LanguageService {
     }
 
     try {
-      const response = await fetch(this.baseUrl);
+      const response = await fetch(`${this.backendUrl}/api/v1/languages`);
       if (!response.ok) {
         throw new Error(`Failed to fetch supported languages: ${response.statusText}`);
       }
-      
+
       const languages = await response.json();
       this.supportedLanguagesCache = languages;
       return languages;
@@ -67,14 +68,14 @@ class LanguageService {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/${language}`);
+      const response = await fetch(`${this.backendUrl}/api/v1/languages/${language}`);
       if (!response.ok) {
         if (response.status === 404) {
           return null;
         }
         throw new Error(`Failed to fetch language info: ${response.statusText}`);
       }
-      
+
       const config = await response.json();
       this.languageCache.set(language, config);
       return config;
@@ -89,11 +90,11 @@ class LanguageService {
    */
   async getLanguageTemplate(language: string): Promise<string | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/${language}/template`);
+      const response = await fetch(`${this.backendUrl}/api/v1/languages/${language}/template`);
       if (!response.ok) {
         return null;
       }
-      
+
       const result = await response.json();
       return result.template;
     } catch (error) {
@@ -107,11 +108,11 @@ class LanguageService {
    */
   async getLanguageExamples(language: string): Promise<LanguageExample[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/${language}/examples`);
+      const response = await fetch(`${this.backendUrl}/api/v1/languages/${language}/examples`);
       if (!response.ok) {
         return [];
       }
-      
+
       const result = await response.json();
       return result.examples || [];
     } catch (error) {
@@ -125,7 +126,7 @@ class LanguageService {
    */
   async validateCode(code: string, language: string): Promise<ValidationResult> {
     try {
-      const response = await fetch(`${this.baseUrl}/validate`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/languages/validate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -152,7 +153,7 @@ class LanguageService {
    */
   async detectLanguage(filename?: string, content?: string): Promise<DetectionResult> {
     try {
-      const response = await fetch(`${this.baseUrl}/detect`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/languages/detect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -182,7 +183,7 @@ class LanguageService {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${this.baseUrl}/detect/file`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/languages/detect/file`, {
         method: 'POST',
         body: formData,
       });
@@ -238,7 +239,7 @@ class LanguageService {
    */
   detectLanguageFromExtension(filename: string): string | null {
     const extension = filename.toLowerCase().split('.').pop();
-    
+
     const extensionMap: Record<string, string> = {
       'py': 'python',
       'pyw': 'python',
@@ -283,8 +284,8 @@ class LanguageService {
    */
   formatValidationIssues(issues: ValidationIssue[]): string[] {
     return issues.map(issue => {
-      const prefix = issue.severity === 'error' ? '❌' : 
-                   issue.severity === 'warning' ? '⚠️' : 'ℹ️';
+      const prefix = issue.severity === 'error' ? '❌' :
+        issue.severity === 'warning' ? '⚠️' : 'ℹ️';
       const lineInfo = issue.line ? ` (Line ${issue.line})` : '';
       return `${prefix} ${issue.message}${lineInfo}`;
     });

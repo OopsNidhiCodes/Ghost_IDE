@@ -372,7 +372,7 @@ class PerformanceService {
 
     if (isMobile) {
       // Reduce cache TTL for mobile
-      this.cache.forEach((entry, key) => {
+      this.cache.forEach((entry) => {
         entry.ttl = Math.min(entry.ttl, 60000); // Max 1 minute on mobile
       });
 

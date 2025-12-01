@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
+import { apiService } from '../../services/apiService';
 import { LanguageConfig } from '../../types';
 
 interface LanguageSelectorProps {
@@ -15,30 +16,40 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ className = 
   // Fetch language configurations from backend
   useEffect(() => {
     const fetchLanguages = async () => {
+      setLoading(true);
       try {
-        // Get list of supported languages
-        const languagesResponse = await fetch('/api/v1/languages');
-        const supportedLanguages = await languagesResponse.json();
+        console.log('LanguageSelector: Fetching languages from API');
+        // Get list of supported languages via apiService
+        const response = await apiService.get<string[]>('/api/v1/languages');
+        console.log('LanguageSelector: API response:', response);
+
+        // Handle both direct array and wrapped response
+        const supportedLanguages = Array.isArray(response) ? response :
+          (response?.data ? response.data : []);
+        console.log('LanguageSelector: Got supported languages:', supportedLanguages);
 
         // Fetch detailed info for each language
         const languageConfigs: Record<string, LanguageConfig> = {};
-        
-        for (const lang of supportedLanguages) {
-          try {
-            const response = await fetch(`/api/v1/languages/${lang}`);
-            if (response.ok) {
-              const config = await response.json();
-              languageConfigs[lang] = config;
+
+        if (Array.isArray(supportedLanguages)) {
+          for (const lang of supportedLanguages) {
+            try {
+              const response = await apiService.get<LanguageConfig>(`/api/v1/languages/${lang}`);
+              if (response.success && response.data) {
+                languageConfigs[lang] = response.data;
+              }
+            } catch (error) {
+              console.warn(`Failed to fetch config for language ${lang}:`, error);
             }
-          } catch (error) {
-            console.warn(`Failed to fetch config for language ${lang}:`, error);
           }
         }
 
         setLanguages(languageConfigs);
+        console.log('LanguageSelector: Languages loaded successfully');
       } catch (error) {
         console.error('Failed to fetch language configurations:', error);
         // Fallback to hardcoded languages if API fails
+        console.log('LanguageSelector: Using fallback languages');
         setLanguages({
           python: {
             name: 'Python',
@@ -138,7 +149,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ className = 
           </option>
         ))}
       </select>
-      
+
       {/* Custom dropdown arrow */}
       <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
         <svg className="w-4 h-4 text-ghost-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

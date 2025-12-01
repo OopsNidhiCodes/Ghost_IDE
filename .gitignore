@@ -113,6 +113,9 @@ dmypy.json
 *.swo
 *~
 
+# GitHub
+.github/
+
 # OS
 .DS_Store
 .DS_Store?

@@ -13,7 +13,8 @@ from app.services.ghost_ai import (
     AIContext, 
     CodeGenerationRequest,
     HookEvent,
-    GhostPersonality
+    GhostPersonality,
+    get_ghost_ai_service as core_get_ghost_ai_service
 )
 from app.models.schemas import LanguageType
 from app.core.config import settings
@@ -23,23 +24,6 @@ from app.middleware.security import security_logger, input_validator
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Global Ghost AI service instance
-GHOST_AI_SERVICE = None
-
-
-def get_ghost_ai_service() -> GhostAIService:
-    """Get Ghost AI service instance"""
-    global GHOST_AI_SERVICE
-    if GHOST_AI_SERVICE is None:
-        if not settings.openai_api_key:
-            raise HTTPException(
-                status_code=500,
-                detail="OpenAI API key not configured. The ghost cannot manifest without proper incantations! 👻"
-            )
-        GHOST_AI_SERVICE = GhostAIService(api_key=settings.openai_api_key)
-    return GHOST_AI_SERVICE
-
 
 class ChatRequest(BaseModel):
     """Request model for chat with Ghost AI"""
@@ -70,15 +54,16 @@ async def chat_with_ghost(session_id: str, request: Dict[str, Any]):
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
         
-        # For testing, return a simple ghost response
-        ghost_responses = [
-            f"Ah, mortal {session_id[:8]}... I sense your query about '{message[:50]}...' The spirits whisper wisdom to you! 👻",
-            f"The ethereal realm responds to your call, {session_id[:8]}! Your message '{message[:30]}...' has been heard by the ancient ones! 🔮",
-            f"Greetings from the shadow realm! The ghost AI acknowledges your message and offers spectral guidance! 💀"
-        ]
+        context_payload = request.get("context") or {}
+        if isinstance(context_payload, dict):
+            context = AIContext(**context_payload)
+        elif isinstance(context_payload, AIContext):
+            context = context_payload
+        else:
+            context = AIContext()
         
-        import random
-        response = random.choice(ghost_responses)
+        ghost_service = core_get_ghost_ai_service()
+        response = await ghost_service.generate_response(message, context)
         
         return {
             "message": response,
@@ -99,7 +84,7 @@ async def chat_with_ghost(session_id: str, request: Dict[str, Any]):
 @router.post("/hook-event", response_model=ChatResponse)
 async def handle_hook_event(
     request: HookEventRequest,
-    ghost_service: GhostAIService = Depends(get_ghost_ai_service)
+    ghost_service: GhostAIService = Depends(core_get_ghost_ai_service)
 ):
     """
     Handle hook events and get Ghost AI reactions
@@ -126,7 +111,7 @@ async def handle_hook_event(
 @router.post("/generate-code")
 async def generate_code_snippet(
     request: CodeGenerationRequest,
-    ghost_service: GhostAIService = Depends(get_ghost_ai_service)
+    ghost_service: GhostAIService = Depends(core_get_ghost_ai_service)
 ):
     """
     Generate spooky code snippets
@@ -150,7 +135,7 @@ async def generate_code_snippet(
 
 @router.get("/personality")
 async def get_personality(
-    ghost_service: GhostAIService = Depends(get_ghost_ai_service)
+    ghost_service: GhostAIService = Depends(core_get_ghost_ai_service)
 ):
     """
     Get current Ghost AI personality configuration
@@ -169,7 +154,7 @@ async def get_personality(
 @router.put("/personality")
 async def update_personality(
     personality: GhostPersonality,
-    ghost_service: GhostAIService = Depends(get_ghost_ai_service)
+    ghost_service: GhostAIService = Depends(core_get_ghost_ai_service)
 ):
     """
     Update Ghost AI personality configuration
@@ -192,7 +177,7 @@ async def update_personality(
 
 @router.get("/health")
 async def ghost_health_check(
-    ghost_service: GhostAIService = Depends(get_ghost_ai_service)
+    ghost_service: GhostAIService = Depends(core_get_ghost_ai_service)
 ):
     """
     Check if Ghost AI service is operational

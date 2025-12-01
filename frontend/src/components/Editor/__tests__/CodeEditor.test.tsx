@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CodeEditor } from '../CodeEditor';
 import { useAppStore } from '../../../store/useAppStore';
-import { socketService } from '../../../services/socketService';
+import { websocketService } from '../../../services/websocketService';
 
 // Mock Monaco Editor
 vi.mock('@monaco-editor/react', () => ({
@@ -51,8 +51,8 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 
 // Mock socket service
-vi.mock('../../../services/socketService', () => ({
-  socketService: {
+vi.mock('../../../services/websocketService', () => ({
+  websocketService: {
     saveFile: vi.fn(),
     triggerHook: vi.fn(),
     executeCode: vi.fn(),
@@ -97,21 +97,21 @@ describe('CodeEditor', () => {
 
   it('renders editor with current file content', () => {
     render(<CodeEditor />);
-    
+
     expect(screen.getByTestId('monaco-editor')).toBeInTheDocument();
     expect(screen.getByDisplayValue('print("Hello, World!")')).toBeInTheDocument();
   });
 
   it('displays file name and language in header', () => {
     render(<CodeEditor />);
-    
+
     expect(screen.getByText('test.py')).toBeInTheDocument();
     expect(screen.getByText('(Python)')).toBeInTheDocument();
   });
 
   it('shows auto-save indicator when enabled', () => {
     render(<CodeEditor />);
-    
+
     expect(screen.getByText('Auto-save')).toBeInTheDocument();
   });
 
@@ -123,26 +123,26 @@ describe('CodeEditor', () => {
     vi.mocked(useAppStore).mockReturnValue(storeWithoutAutoSave as any);
 
     render(<CodeEditor />);
-    
+
     expect(screen.queryByText('Auto-save')).not.toBeInTheDocument();
   });
 
   it('calls updateFile when content changes', async () => {
     render(<CodeEditor />);
-    
+
     const textarea = screen.getByTestId('editor-textarea');
     fireEvent.change(textarea, { target: { value: 'print("Updated!")' } });
-    
+
     expect(mockStore.updateFile).toHaveBeenCalledWith('test-file-1', 'print("Updated!")');
   });
 
   it('calls saveFile when save button is clicked', () => {
     render(<CodeEditor />);
-    
+
     const saveButton = screen.getByTitle('Save (Ctrl+S)');
     fireEvent.click(saveButton);
-    
-    expect(socketService.saveFile).toHaveBeenCalledWith({
+
+    expect(websocketService.saveFile).toHaveBeenCalledWith({
       id: 'test-file-1',
       name: 'test.py',
       content: 'print("Hello, World!")',
@@ -152,11 +152,11 @@ describe('CodeEditor', () => {
 
   it('triggers hook event when save is triggered', () => {
     render(<CodeEditor />);
-    
+
     const saveButton = screen.getByTitle('Save (Ctrl+S)');
     fireEvent.click(saveButton);
-    
-    expect(socketService.triggerHook).toHaveBeenCalledWith('on_save', {
+
+    expect(websocketService.triggerHook).toHaveBeenCalledWith('on_save', {
       code: 'print("Hello, World!")',
       language: 'python',
     });
@@ -164,11 +164,11 @@ describe('CodeEditor', () => {
 
   it('calls executeCode when run button is clicked', () => {
     render(<CodeEditor />);
-    
+
     const runButton = screen.getByTitle('Run Code (Ctrl+Enter)');
     fireEvent.click(runButton);
-    
-    expect(socketService.executeCode).toHaveBeenCalledWith(
+
+    expect(websocketService.executeCode).toHaveBeenCalledWith(
       'print("Hello, World!")',
       'python'
     );
@@ -176,26 +176,26 @@ describe('CodeEditor', () => {
 
   it('handles auto-save with debounce', async () => {
     vi.useFakeTimers();
-    
+
     render(<CodeEditor />);
-    
+
     const textarea = screen.getByTestId('editor-textarea');
     fireEvent.change(textarea, { target: { value: 'print("Auto-saved!")' } });
-    
+
     // Should not call saveFile immediately
-    expect(socketService.saveFile).not.toHaveBeenCalled();
-    
+    expect(websocketService.saveFile).not.toHaveBeenCalled();
+
     // Fast-forward time to trigger auto-save
     vi.advanceTimersByTime(2000);
-    
+
     // Run all pending timers
     vi.runAllTimers();
-    
+
     // Check if save was called
-    expect(socketService.saveFile).toHaveBeenCalledWith(expect.objectContaining({
+    expect(websocketService.saveFile).toHaveBeenCalledWith(expect.objectContaining({
       content: 'print("Auto-saved!")',
     }));
-    
+
     vi.useRealTimers();
   });
 
@@ -207,7 +207,7 @@ describe('CodeEditor', () => {
     vi.mocked(useAppStore).mockReturnValue(storeWithoutFile as any);
 
     render(<CodeEditor />);
-    
+
     expect(screen.getByDisplayValue(/Welcome to the haunted Python realm/)).toBeInTheDocument();
   });
 
@@ -224,7 +224,7 @@ describe('CodeEditor', () => {
     vi.mocked(useAppStore).mockReturnValue(javaStore as any);
 
     render(<CodeEditor />);
-    
+
     expect(screen.getByText('Test.java')).toBeInTheDocument();
     expect(screen.getByText('(Java)')).toBeInTheDocument();
   });
@@ -237,12 +237,12 @@ describe('CodeEditor', () => {
     vi.mocked(useAppStore).mockReturnValue(storeWithoutSession as any);
 
     render(<CodeEditor />);
-    
+
     const saveButton = screen.getByTitle('Save (Ctrl+S)');
     fireEvent.click(saveButton);
-    
-    expect(socketService.saveFile).not.toHaveBeenCalled();
-    expect(socketService.triggerHook).not.toHaveBeenCalled();
+
+    expect(websocketService.saveFile).not.toHaveBeenCalled();
+    expect(websocketService.triggerHook).not.toHaveBeenCalled();
   });
 
   it('does not call socket methods when no current file', () => {
@@ -253,10 +253,10 @@ describe('CodeEditor', () => {
     vi.mocked(useAppStore).mockReturnValue(storeWithoutFile as any);
 
     render(<CodeEditor />);
-    
+
     const runButton = screen.getByTitle('Run Code (Ctrl+Enter)');
     fireEvent.click(runButton);
-    
-    expect(socketService.executeCode).not.toHaveBeenCalled();
+
+    expect(websocketService.executeCode).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,12 @@ class WebSocketMessageType(str, Enum):
     PING = "ping"
     PONG = "pong"
     
+    # Client actions (sent from frontend)
+    EXECUTE_CODE = "execute_code"
+    GHOST_CHAT = "ghost_chat"
+    SAVE_FILE = "save_file"
+    HOOK_EVENT = "hook_event"
+    
     # Code execution
     EXECUTION_START = "execution_start"
     EXECUTION_OUTPUT = "execution_output"

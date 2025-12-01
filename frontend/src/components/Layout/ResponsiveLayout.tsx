@@ -7,7 +7,7 @@ interface ResponsiveLayoutProps {
 }
 
 export const ResponsiveLayout: React.FC<ResponsiveLayoutProps> = ({ children, className = '' }) => {
-  const { layout, updateLayout } = useAppStore();
+  const { updateLayout } = useAppStore();
   const [isDragging, setIsDragging] = useState<string | null>(null);
   const [screenSize, setScreenSize] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,12 +29,6 @@ export const ResponsiveLayout: React.FC<ResponsiveLayoutProps> = ({ children, cl
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  // Handle panel resizing
-  const handleMouseDown = (panel: string) => (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(panel);
-  };
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging || !containerRef.current) return;

@@ -1,6 +1,6 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { HelpSystem, HelpButton } from '../HelpSystem';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 describe('HelpSystem', () => {
   const mockOnClose = vi.fn();

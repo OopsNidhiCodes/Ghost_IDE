@@ -8,13 +8,8 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-RUN useradd -m -u 1000 coderunner
-USER coderunner
+# Use existing node user (UID 1000 already exists)
+USER node
 
-# Copy and set permissions for execution script
-COPY --chown=coderunner:coderunner execute.js /app/
-RUN chmod +x /app/execute.js
-
-# Default command
-CMD ["node", "/app/execute.js"]
+# Default command (overridden at runtime)
+CMD ["node"]

@@ -10,26 +10,26 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { IDEView } from '../../components/Views/IDEView';
 import { integrationService } from '../../services/integrationService';
-import { socketService } from '../../services/socketService';
+import { websocketService } from '../../services/websocketService';
 import { languageService } from '../../services/languageService';
 import { apiService } from '../../services/apiService';
 import { useAppStore } from '../../store/useAppStore';
 
 // Mock services
 vi.mock('../../services/integrationService');
-vi.mock('../../services/socketService');
+vi.mock('../../services/websocketService');
 vi.mock('../../services/languageService');
 vi.mock('../../services/apiService');
 
 const mockIntegrationService = vi.mocked(integrationService);
-const mockSocketService = vi.mocked(socketService);
+const mockWebsocketService = vi.mocked(websocketService);
 const mockLanguageService = vi.mocked(languageService);
 const mockApiService = vi.mocked(apiService);
 
 // Mock React Router
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
   return {
     ...actual,
     useParams: () => ({ sessionId: 'test-session-123' }),
@@ -59,12 +59,11 @@ describe('End-to-End Integration Tests', () => {
     mockIntegrationService.saveCurrentFile.mockResolvedValue();
     mockIntegrationService.switchLanguageWorkflow.mockResolvedValue();
     
-    mockSocketService.isConnected.mockReturnValue(true);
+    mockWebsocketService.isConnected.mockReturnValue(true);
     
-    mockLanguageService.getLanguageConfig.mockResolvedValue({
+    mockLanguageService.getLanguageInfo.mockResolvedValue({
       name: 'Python',
-      displayName: 'Python',
-      fileExtension: '.py',
+      extension: '.py',
       monacoLanguage: 'python',
       icon: '🐍',
       color: '#3776ab',
@@ -72,7 +71,7 @@ describe('End-to-End Integration Tests', () => {
       examples: [],
     });
     
-    mockLanguageService.getTemplate.mockResolvedValue('print("Hello, World!")');
+    mockLanguageService.getLanguageTemplate.mockResolvedValue('print("Hello, World!")');
     
     mockApiService.healthCheck.mockResolvedValue(true);
     
@@ -330,7 +329,7 @@ describe('End-to-End Integration Tests', () => {
     it('should show loading state during initialization', async () => {
       // Make initialization take time
       mockIntegrationService.initialize.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve('test-session'), 100))
+        () => new Promise<string>(resolve => setTimeout(() => resolve('test-session'), 100))
       );
 
       render(

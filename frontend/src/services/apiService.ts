@@ -1,5 +1,4 @@
 import { errorService, RetryConfig } from './errorService';
-import { useNotificationStore } from '../store/useNotificationStore';
 
 export interface ApiRequestConfig {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';

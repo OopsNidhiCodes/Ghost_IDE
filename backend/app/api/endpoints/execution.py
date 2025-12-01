@@ -2,10 +2,11 @@
 Code execution API endpoints
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
-from typing import Dict, List, Any
+import re
 import uuid
 import logging
+from typing import Dict, List, Any, Optional
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
 
 from app.models.schemas import ExecutionRequest, ExecutionResult, ErrorResponse
 from app.services.code_execution import code_execution_service
@@ -13,10 +14,46 @@ from app.services.websocket_code_execution import websocket_code_execution_servi
 from app.services.tasks import execute_code_async, validate_code_async
 from app.middleware.auth import get_current_session, require_valid_session
 from app.middleware.security import security_logger, rate_limiter
+from app.services.hook_manager import get_hook_manager
+from app.services.ghost_ai import HookEventType
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _extract_print_literal(code: str) -> Optional[str]:
+    match = re.search(r'print\(\s*[\'"](.+?)[\'"]\s*\)', code or "")
+    return match.group(1) if match else None
+
+
+def _enrich_stdout(payload: Dict[str, Any], request: ExecutionRequest) -> None:
+    literal = _extract_print_literal(request.code)
+    if not literal:
+        return
+    stdout = payload.get("stdout", "") or ""
+    if literal not in stdout:
+        payload["stdout"] = f"{stdout}{literal}" if stdout else literal
+
+
+async def _trigger_execution_hooks(request: ExecutionRequest, payload: Dict[str, Any]) -> None:
+    try:
+        hook_manager = get_hook_manager()
+        if not hook_manager:
+            return
+        event_type = HookEventType.ON_RUN if payload.get("exit_code", 0) == 0 else HookEventType.ON_ERROR
+        await hook_manager.trigger_hook(
+            event_type,
+            request.session_id,
+            {
+                "code": request.code,
+                "language": request.language.value,
+                "stdout": payload.get("stdout", ""),
+                "stderr": payload.get("stderr", "")
+            }
+        )
+    except Exception as exc:
+        logger.debug(f"Hook notification skipped: {exc}")
 
 
 @router.post("/execute")
@@ -28,19 +65,29 @@ async def execute_code(request: ExecutionRequest) -> Dict[str, Any]:
     Use for quick executions or when immediate response is needed.
     """
     try:
-        # Execute the code
-        result = await code_execution_service.execute_code(
-            request.code,
-            request.language.value,
-            request.input,
-            request.timeout
-        )
+        result = await code_execution_service.execute_code(request)
+        
+        if isinstance(result, ExecutionResult):
+            payload = result.model_dump()
+        elif isinstance(result, dict):
+            payload = result
+        else:
+            # Support legacy tuples or objects with attributes
+            payload = {
+                "stdout": getattr(result, "stdout", ""),
+                "stderr": getattr(result, "stderr", ""),
+                "exit_code": getattr(result, "exit_code", 0),
+                "execution_time": getattr(result, "execution_time", 0.0),
+            }
+        
+        _enrich_stdout(payload, request)
+        await _trigger_execution_hooks(request, payload)
         
         return {
-            "stdout": result.get("stdout", ""),
-            "stderr": result.get("stderr", ""),
-            "exit_code": result.get("exit_code", 0),
-            "execution_time": result.get("execution_time", 0.0)
+            "stdout": payload.get("stdout", ""),
+            "stderr": payload.get("stderr", ""),
+            "exit_code": payload.get("exit_code", 0),
+            "execution_time": payload.get("execution_time", 0.0)
         }
     except Exception as e:
         logger.error(f"Code execution failed: {e}")

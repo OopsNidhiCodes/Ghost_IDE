@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { Notification, NotificationType } from '../components/ErrorHandling/NotificationSystem';
+import type { Notification } from '../components/ErrorHandling/NotificationSystem';
 
 interface NotificationState {
   notifications: Notification[];

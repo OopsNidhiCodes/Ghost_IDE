@@ -16,9 +16,5 @@ USER coderunner
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Copy and set permissions for execution script
-COPY --chown=coderunner:coderunner execute.py /app/
-RUN chmod +x /app/execute.py
-
-# Default command
-CMD ["python", "/app/execute.py"]
+# Default command (overridden at runtime)
+CMD ["python3"]

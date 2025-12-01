@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Wifi, WifiOff, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { socketService } from '../../services/socketService';
+import { websocketService } from '../../services/websocketService';
 
 export const ConnectionStatus: React.FC = () => {
   const { isConnected } = useAppStore();
@@ -10,17 +10,18 @@ export const ConnectionStatus: React.FC = () => {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setConnectionState(socketService.getConnectionState());
-      setReconnectAttempts(socketService.getReconnectAttempts());
+      setConnectionState(websocketService.getConnectionState());
+      setReconnectAttempts(websocketService.getReconnectAttempts());
     }, 1000);
 
     return () => clearInterval(interval);
   }, []);
 
   const handleReconnect = () => {
-    socketService.disconnect();
+    websocketService.disconnect();
     setTimeout(() => {
-      socketService.connect();
+      const { sessionId } = useAppStore.getState();
+      websocketService.connect(sessionId || undefined);
     }, 1000);
   };
 

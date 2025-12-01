@@ -4,8 +4,12 @@ Pydantic schemas for API request/response models
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
+
+
+def to_camel(string: str) -> str:
+    return "".join(word.capitalize() if i > 0 else word for i, word in enumerate(string.split("_")))
 
 
 class LanguageType(str, Enum):
@@ -20,9 +24,11 @@ class LanguageType(str, Enum):
 class UserPreferences(BaseModel):
     """User preferences model"""
     theme: str = "ghost-dark"
-    font_size: int = Field(default=14, ge=8, le=32)
-    auto_save: bool = True
-    auto_save_interval: int = Field(default=30, ge=5, le=300)  # seconds
+    font_size: int = Field(default=14, ge=8, le=32, alias="fontSize")
+    auto_save: bool = Field(default=True, alias="autoSave")
+    auto_save_interval: int = Field(default=30, ge=5, le=300, alias="autoSaveInterval")  # seconds
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class CodeFileBase(BaseModel):
@@ -30,6 +36,8 @@ class CodeFileBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     content: str = ""
     language: LanguageType
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
 
 class CodeFileCreate(CodeFileBase):
@@ -43,13 +51,15 @@ class CodeFileUpdate(BaseModel):
     content: Optional[str] = None
     language: Optional[LanguageType] = None
 
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
 
 class CodeFile(CodeFileBase):
     """Complete code file model with metadata"""
     id: str
     last_modified: datetime
     
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True, alias_generator=to_camel)
 
 
 class ChatMessage(BaseModel):
@@ -60,11 +70,15 @@ class ChatMessage(BaseModel):
     timestamp: datetime
     context: Optional[Dict[str, Any]] = None
 
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
 
 class UserSessionBase(BaseModel):
     """Base model for user sessions"""
-    current_language: LanguageType = LanguageType.PYTHON
+    current_language: LanguageType = Field(default=LanguageType.PYTHON, alias="language")
     preferences: UserPreferences = UserPreferences()
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UserSessionCreate(UserSessionBase):
@@ -86,7 +100,39 @@ class UserSession(UserSessionBase):
     created_at: datetime
     last_activity: datetime
     
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class SyncFilePayload(BaseModel):
+    """Payload for syncing files from clients"""
+    id: Optional[str] = None
+    name: str
+    content: str = ""
+    language: Optional[str] = None
+    last_modified: Optional[datetime] = Field(default=None, alias="lastModified")
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+
+class SyncChatMessage(BaseModel):
+    """Payload for syncing chat history"""
+    id: Optional[str] = None
+    content: str
+    sender: str
+    timestamp: Optional[datetime] = None
+    context: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+
+class SessionSyncRequest(BaseModel):
+    """Payload for syncing session data"""
+    files: List[SyncFilePayload] = Field(default_factory=list)
+    chat_history: List[SyncChatMessage] = Field(default_factory=list, alias="chatHistory")
+    preferences: Optional[UserPreferences] = None
+    last_activity: Optional[datetime] = Field(default=None, alias="lastActivity")
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
 
 class ExecutionRequest(BaseModel):
@@ -106,12 +152,17 @@ class ExecutionResult(BaseModel):
     execution_time: float
     timed_out: bool = False
 
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
 
 class SessionResponse(BaseModel):
     """Response model for session operations"""
     success: bool
     message: str
+    session_id: str = Field(alias="sessionId")
     session: Optional[UserSession] = None
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
 
 class ErrorResponse(BaseModel):

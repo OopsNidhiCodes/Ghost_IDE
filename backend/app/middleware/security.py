@@ -19,66 +19,12 @@ import asyncio
 logger = logging.getLogger(__name__)
 
 # Security patterns for code validation
+# Since code runs in isolated Docker containers with resource limits,
+# we only block the most dangerous operations (code injection attacks)
 DANGEROUS_PATTERNS = [
-    # System commands
-    r'import\s+os',
-    r'import\s+subprocess',
-    r'import\s+sys',
-    r'from\s+os\s+import',
-    r'from\s+subprocess\s+import',
-    r'from\s+sys\s+import',
-    r'__import__\s*\(',
-    r'exec\s*\(',
-    r'eval\s*\(',
-    r'compile\s*\(',
-    
-    # File operations
-    r'open\s*\(',
-    r'file\s*\(',
-    r'input\s*\(',
-    r'raw_input\s*\(',
-    
-    # Network operations
-    r'import\s+socket',
-    r'import\s+urllib',
-    r'import\s+requests',
-    r'from\s+socket\s+import',
-    r'from\s+urllib\s+import',
-    r'from\s+requests\s+import',
-    
-    # Process operations
-    r'fork\s*\(',
-    r'spawn\s*\(',
-    r'system\s*\(',
-    
-    # Dangerous JavaScript patterns
-    r'require\s*\(',
-    r'process\.',
-    r'global\.',
-    r'Buffer\.',
-    r'fs\.',
-    r'child_process',
-    r'cluster',
-    r'crypto',
-    r'dgram',
-    r'dns',
-    r'http',
-    r'https',
-    r'net',
-    r'os',
-    r'path',
-    r'querystring',
-    r'readline',
-    r'stream',
-    r'string_decoder',
-    r'tls',
-    r'tty',
-    r'url',
-    r'util',
-    r'v8',
-    r'vm',
-    r'worker_threads',
-    r'zlib',
+    # Code injection - these can bypass Docker isolation
+    r'import\s+ctypes',
+    r'from\s+ctypes\s+import',
 ]
 
 # Compile patterns for better performance
@@ -181,10 +127,9 @@ class InputValidator:
     @staticmethod
     def _validate_python_code(code: str) -> tuple[bool, Optional[str]]:
         """Python-specific validation"""
-        # Check for dangerous imports
+        # Only block truly dangerous imports (code runs in isolated Docker container)
         dangerous_imports = [
-            'os', 'sys', 'subprocess', 'socket', 'urllib', 'requests',
-            'shutil', 'tempfile', 'pickle', 'marshal', 'imp', 'importlib'
+            'ctypes', 'imp', 'importlib.__import__'
         ]
         
         for imp in dangerous_imports:
@@ -192,7 +137,7 @@ class InputValidator:
                 return False, f"Import of '{imp}' module is not allowed"
         
         # Check for dangerous functions
-        dangerous_funcs = ['exec', 'eval', 'compile', '__import__', 'getattr', 'setattr', 'delattr']
+        dangerous_funcs = ['exec', 'eval', 'compile', '__import__']
         for func in dangerous_funcs:
             if re.search(rf'\b{func}\s*\(', code, re.IGNORECASE):
                 return False, f"Use of '{func}' function is not allowed"
@@ -202,30 +147,23 @@ class InputValidator:
     @staticmethod
     def _validate_javascript_code(code: str) -> tuple[bool, Optional[str]]:
         """JavaScript-specific validation"""
-        # Check for Node.js modules
-        if re.search(r'require\s*\(', code, re.IGNORECASE):
-            return False, "Use of 'require' is not allowed"
-        
-        # Check for dangerous globals
-        dangerous_globals = ['process', 'global', 'Buffer', 'console']
-        for glob in dangerous_globals:
-            if re.search(rf'\b{glob}\s*\.', code, re.IGNORECASE):
-                return False, f"Access to '{glob}' global is not allowed"
-        
+        # Allow basic operations - Docker container provides isolation
         return True, None
     
     @staticmethod
     def _validate_compiled_code(code: str, language: str) -> tuple[bool, Optional[str]]:
         """Validation for compiled languages (Java, C, C++)"""
-        # Check for system calls
-        dangerous_includes = [
-            'system', 'exec', 'fork', 'socket', 'network',
-            'file', 'io', 'process', 'thread'
+        # Docker containers provide isolation, so allow standard libraries
+        # Only block truly dangerous system-level operations
+        dangerous_patterns = [
+            r'\bsystem\s*\(',  # system() calls
+            r'\bexec[vl][pe]*\s*\(',  # exec family
+            r'\bfork\s*\(',  # process forking
         ]
         
-        for inc in dangerous_includes:
-            if re.search(rf'#include.*{inc}|import.*{inc}', code, re.IGNORECASE):
-                return False, f"Include/import of '{inc}' is not allowed"
+        for pattern in dangerous_patterns:
+            if re.search(pattern, code, re.IGNORECASE):
+                return False, f"Use of dangerous system call is not allowed"
         
         return True, None
     

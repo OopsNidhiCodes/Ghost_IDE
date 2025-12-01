@@ -10,6 +10,96 @@ from typing import Dict, List, Optional, Any
 from enum import Enum
 
 import openai
+from pydantic import BaseModel, Field, ConfigDict
+
+from ..models.schemas import ChatMessage, CodeFile, LanguageType
+
+
+logger = logging.getLogger(__name__)
+
+
+class HookEventType(str, Enum):
+    """Types of hook events that trigger Ghost AI responses"""
+    ON_RUN = "on_run"
+    ON_ERROR = "on_error"
+    ON_SAVE = "on_save"
+
+
+class GhostPersonality(BaseModel):
+    """Configuration for Ghost AI personality traits"""
+    name: str = "Spectral"
+    traits: List[str] = Field(default=[
+        "darkly humorous", "sarcastic", "helpful", "mysterious", 
+        "dramatic", "theatrical", "wise", "mischievous"
+    ])
+    vocabulary_style: str = "spooky"
+    response_templates: Dict[str, List[str]] = Field(default={
+        "encouragement": [
+            "Your code rises from the digital grave! 💀",
+            "The spirits approve of your programming prowess...",
+            "Excellent! Even the undead would be proud of this code.",
+            "Your logic flows like ectoplasm through the machine..."
+        ],
+        "mockery": [
+            "Even a zombie could write better code than this! 🧟‍♂️",
+            "This code is more cursed than my eternal existence...",
+            "I've seen scarier code in haunted repositories...",
+            "Your bugs are multiplying faster than ghosts in a graveyard!"
+        ],
+        "debugging": [
+            "Let me peer into the ethereal realm of your stack trace...",
+            "The spirits whisper of a bug lurking in line {}...",
+            "Your code has been possessed by a syntax demon!",
+            "I sense a disturbance in the force... I mean, your logic."
+        ],
+        "code_review": [
+            "This code could use some supernatural refactoring...",
+            "I see potential in this mortal code, but it needs my ghostly touch.",
+            "Your variables need more... spectral naming conventions.",
+            "This function is deader than I am - time for resurrection!"
+        ]
+    })
+
+
+class AIContext(BaseModel):
+    """Context information for AI responses"""
+    chat_history: List[Dict[str, Any]] = Field(default=[])
+    current_code: str = ""
+    language: LanguageType = LanguageType.PYTHON
+    recent_errors: List[str] = Field(default=[])
+    session_id: str = ""
+    user_preferences: Dict[str, Any] = Field(default={})
+    
+    model_config = ConfigDict(extra="allow")
+    
+    model_config = ConfigDict(extra="allow")
+
+
+class CodeGenerationRequest(BaseModel):
+    """Request for AI code generation"""
+    description: str = Field(..., min_length=1)
+    language: LanguageType
+    context: str = ""
+    spooky_level: int = Field(default=3, ge=1, le=5)  # 1=subtle, 5=very spooky
+
+
+class HookEvent(BaseModel):
+    """Hook event data"""
+    event_type: HookEventType
+    session_id: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+"""
+Ghost AI Service - Spooky AI assistant for the GhostIDE
+"""
+
+import asyncio
+import json
+import logging
+from datetime import datetime
+from typing import Dict, List, Optional, Any
+from enum import Enum
+
+import openai
 from pydantic import BaseModel, Field
 
 from ..models.schemas import ChatMessage, CodeFile, LanguageType
@@ -90,13 +180,16 @@ class HookEvent(BaseModel):
 class GhostAIService:
     """
     Ghost AI Service with spooky persona for code assistance and entertainment
+    Powered by Google Gemini API
     """
     
     def __init__(self, api_key: str, personality: Optional[GhostPersonality] = None):
         """Initialize the Ghost AI service"""
-        self.client = openai.AsyncOpenAI(api_key=api_key)
+        self.api_key = api_key
         self.personality = personality or GhostPersonality()
         self.system_prompt = self._build_system_prompt()
+        self.api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        self.offline_mode = not api_key or api_key == "test-key"
         
     def _build_system_prompt(self) -> str:
         """Build the system prompt that defines the Ghost AI persona"""
@@ -134,32 +227,66 @@ Remember: You're helpful first, spooky second. Never sacrifice code quality for 
         context: AIContext,
         temperature: float = 0.7
     ) -> str:
-        """Generate a context-aware response from the Ghost AI"""
+        """Generate a context-aware response from the Ghost AI using Gemini"""
+        if self.offline_mode:
+            return self._build_offline_response(prompt, context)
         try:
-            # Build conversation history
-            messages = [{"role": "system", "content": self.system_prompt}]
+            import httpx
             
-            # Add recent chat history for context
+            # Build conversation history for Gemini
+            contents = []
+            
+            # Add system prompt as the first user part (or context)
+            # Gemini doesn't have a strict 'system' role in v1beta chat, so we prepend to context
+            
+            # Add recent chat history
             for msg in context.chat_history[-10:]:  # Last 10 messages
-                role = "user" if msg.get("sender") == "user" else "assistant"
-                messages.append({"role": role, "content": msg.get("content", "")})
+                role = "user" if msg.get("sender") == "user" else "model"
+                contents.append({
+                    "role": role,
+                    "parts": [{"text": msg.get("content", "")}]
+                })
             
-            # Add current context information
+            # Add current context information and prompt
             context_info = self._build_context_info(context)
-            if context_info:
-                messages.append({"role": "system", "content": context_info})
+            final_prompt = f"{self.system_prompt}\n\nCONTEXT:\n{context_info}\n\nUSER REQUEST:\n{prompt}"
             
-            # Add the current prompt
-            messages.append({"role": "user", "content": prompt})
+            # If history exists, append new user message. If not, start with it.
+            if contents and contents[-1]["role"] == "user":
+                # Merge with last user message if needed (Gemini prefers alternating roles)
+                contents[-1]["parts"][0]["text"] += f"\n\n{final_prompt}"
+            else:
+                contents.append({
+                    "role": "user",
+                    "parts": [{"text": final_prompt}]
+                })
             
-            response = await self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=messages,
-                temperature=temperature,
-                max_tokens=500
-            )
+            # Prepare request payload
+            payload = {
+                "contents": contents,
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": 500,
+                }
+            }
             
-            return response.choices[0].message.content.strip()
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.api_url}?key={self.api_key}",
+                    json=payload,
+                    timeout=30.0
+                )
+                
+                if response.status_code != 200:
+                    logger.error(f"Gemini API error: {response.text}")
+                    return self._get_fallback_response("error")
+                
+                data = response.json()
+                if "candidates" in data and data["candidates"]:
+                    content = data["candidates"][0]["content"]["parts"][0]["text"]
+                    return content.strip()
+                else:
+                    return self._get_fallback_response("default")
             
         except Exception as e:
             logger.error(f"Error generating AI response: {e}")
@@ -170,7 +297,7 @@ Remember: You're helpful first, spooky second. Never sacrifice code quality for 
         info_parts = []
         
         if context.current_code:
-            info_parts.append(f"Current code ({context.language}):\n```{context.language}\n{context.current_code[:500]}...\n```")
+            info_parts.append(f"Current code ({context.language}):\n```{context.language}\n{context.current_code[:1000]}...\n```")
         
         if context.recent_errors:
             errors = "\n".join(context.recent_errors[-3:])  # Last 3 errors
@@ -221,6 +348,8 @@ Remember: You're helpful first, spooky second. Never sacrifice code quality for 
     
     async def generate_code_snippet(self, request: CodeGenerationRequest) -> str:
         """Generate spooky-themed code snippets"""
+        if self.offline_mode:
+            return f"# {request.language} snippet (offline mode)\nprint('Greetings from the spectral cache! 👻')"
         try:
             spooky_vars = self._get_spooky_variables(request.spooky_level)
             
@@ -277,6 +406,15 @@ Return only the code with comments, no explanations."""
         
         return fallbacks.get(event_type, fallbacks["default"])
     
+    def _build_offline_response(self, prompt: str, context: AIContext) -> str:
+        """Deterministic fallback when external APIs are unavailable"""
+        code_hint = context.current_code[:60] + "..." if context.current_code else "mysterious code"
+        return (
+            f"👻 [Offline Whisper] The spirits are conserving energy, mortal.\n"
+            f"I sensed this prompt: '{prompt[:80]}...'\n"
+            f"Focus on {context.language} and watch over your {code_hint}"
+        )
+    
     def get_personality_info(self) -> Dict[str, Any]:
         """Get current personality configuration"""
         return {
@@ -291,3 +429,16 @@ Return only the code with comments, no explanations."""
         self.personality = personality
         self.system_prompt = self._build_system_prompt()
         logger.info(f"Ghost AI personality updated to: {personality.name}")
+
+# Global Ghost AI service instance
+ghost_ai_service: Optional[GhostAIService] = None
+
+
+def get_ghost_ai_service() -> GhostAIService:
+    """Get or create the global Ghost AI service instance"""
+    global ghost_ai_service
+    if ghost_ai_service is None:
+        import os
+        api_key = os.getenv("GEMINI_API_KEY", os.getenv("OPENAI_API_KEY", "test-key"))
+        ghost_ai_service = GhostAIService(api_key=api_key)
+    return ghost_ai_service

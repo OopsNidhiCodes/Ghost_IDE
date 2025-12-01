@@ -58,13 +58,6 @@ class ConnectionManager:
             
             logger.info(f"WebSocket connected for session {session_id}")
             
-            # Send connection confirmation
-            await self.send_to_connection(websocket, WebSocketMessage(
-                type=WebSocketMessageType.CONNECT,
-                session_id=session_id,
-                data={"status": "connected", "connection_id": connection_id}
-            ))
-            
             return True
             
         except Exception as e:

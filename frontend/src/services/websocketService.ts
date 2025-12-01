@@ -8,7 +8,7 @@ import { useNotificationStore } from '../store/useNotificationStore';
 import { errorService } from './errorService';
 
 export interface WebSocketMessage {
-  type: 'execution_start' | 'execution_output' | 'execution_complete' | 'execution_error' | 'ghost_response' | 'ghost_typing' | 'session_update';
+  type: 'execution_start' | 'execution_output' | 'execution_complete' | 'execution_error' | 'ghost_response' | 'ghost_typing' | 'session_update' | 'connect' | 'pong' | 'ai_response' | 'ai_typing' | 'file_saved' | 'hook_triggered';
   data: any;
   sessionId?: string;
 }
@@ -32,23 +32,23 @@ class WebSocketService {
 
       this.connectionState = 'connecting';
       this.currentSessionId = sessionId || 'default';
-      
+
       const serverUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
       const wsUrl = serverUrl.replace('http', 'ws');
       const fullUrl = `${wsUrl}/ws/${this.currentSessionId}`;
-      
+
       console.log('Connecting to WebSocket:', fullUrl);
-      
+
       try {
         this.ws = new WebSocket(fullUrl);
-        
+
         this.ws.onopen = () => {
           console.log('WebSocket connected');
           this.connectionState = 'connected';
           useAppStore.getState().setConnected(true);
           this.reconnectAttempts = 0;
           this.startHeartbeat();
-          
+
           const { showSuccess } = useNotificationStore.getState();
           if (this.reconnectAttempts > 0) {
             showSuccess(
@@ -57,7 +57,7 @@ class WebSocketService {
               { duration: 3000 }
             );
           }
-          
+
           resolve();
         };
 
@@ -66,7 +66,7 @@ class WebSocketService {
           this.connectionState = 'disconnected';
           useAppStore.getState().setConnected(false);
           this.stopHeartbeat();
-          
+
           errorService.logError(new Error(`WebSocket disconnected: ${event.code} ${event.reason}`), {
             component: 'WebSocketService',
             action: 'disconnect',
@@ -81,7 +81,7 @@ class WebSocketService {
               { duration: 4000 }
             );
           }
-          
+
           this.handleReconnect();
         };
 
@@ -89,12 +89,12 @@ class WebSocketService {
           console.error('WebSocket error:', error);
           this.connectionState = 'disconnected';
           useAppStore.getState().setConnected(false);
-          
+
           errorService.handleError(new Error('WebSocket connection error'), {
             component: 'WebSocketService',
             action: 'connect',
           }, false);
-          
+
           reject(error);
         };
 
@@ -117,21 +117,48 @@ class WebSocketService {
 
   private handleMessage(message: WebSocketMessage) {
     console.log('Received WebSocket message:', message);
-    
+
     switch (message.type) {
+      case 'connect':
+        console.log('Connection acknowledged by server');
+        break;
+
+      case 'pong':
+        console.log('Heartbeat pong received');
+        break;
+
       case 'execution_start':
         useAppStore.getState().setExecuting(true);
         break;
 
       case 'execution_output':
-        useAppStore.getState().appendExecutionOutput(message.data.stdout, message.data.stderr);
+        // Backend streams execution output as { output: str, stream: 'stdout'|'stderr' }
+        try {
+          const out = message.data?.output || '';
+          const stream = message.data?.stream || 'stdout';
+          if (stream === 'stderr') {
+            useAppStore.getState().appendExecutionOutput(undefined, out);
+          } else {
+            useAppStore.getState().appendExecutionOutput(out, undefined);
+          }
+        } catch (e) {
+          console.warn('Malformed execution_output payload', message.data);
+        }
         break;
 
       case 'execution_complete':
         useAppStore.getState().setExecuting(false);
-        useAppStore.getState().setExecutionResult(message.data);
-        if (message.data.stdout || message.data.stderr || message.data.executionTime > 0) {
-          useAppStore.getState().addToExecutionHistory(message.data);
+        // Backend wraps the result under `data.result` (see MessageRouter.notify_execution_complete)
+        // Accept either shape for compatibility: { result: {...} } or direct result object
+        try {
+          const result = (message.data && (message.data.result ?? message.data)) || null;
+          useAppStore.getState().setExecutionResult(result);
+          const execTime = result?.executionTime ?? result?.execution_time ?? 0;
+          if (result && (result.stdout || result.stderr || execTime > 0)) {
+            useAppStore.getState().addToExecutionHistory(result);
+          }
+        } catch (e) {
+          console.warn('Malformed execution_complete payload', message.data);
         }
         break;
 
@@ -145,6 +172,7 @@ class WebSocketService {
         });
         break;
 
+      case 'ai_response':
       case 'ghost_response':
         useAppStore.getState().setGhostTyping(false);
         useAppStore.getState().addChatMessage({
@@ -156,12 +184,18 @@ class WebSocketService {
         });
         break;
 
+      case 'ai_typing':
       case 'ghost_typing':
-        useAppStore.getState().setGhostTyping(true);
+        useAppStore.getState().setGhostTyping(message.data.is_typing ?? true);
+        break;
+
+      case 'file_saved':
+        // Informational: file saved notification from backend
+        console.log('File saved notification received', message.data);
         break;
 
       default:
-        console.log('Unknown message type:', message.type);
+        console.warn('Unknown message type:', message.type, message);
     }
   }
 
@@ -174,9 +208,9 @@ class WebSocketService {
       this.connectionState = 'reconnecting';
       this.reconnectAttempts++;
       console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-      
+
       const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000);
-      
+
       setTimeout(() => {
         if (this.connectionState === 'reconnecting') {
           this.connect(this.currentSessionId || undefined);
@@ -185,7 +219,7 @@ class WebSocketService {
     } else {
       console.error('Max reconnection attempts reached');
       this.connectionState = 'disconnected';
-      
+
       const { showError } = useNotificationStore.getState();
       showError(
         '💀 Connection to Spirit Realm Failed',
@@ -204,7 +238,7 @@ class WebSocketService {
   private startHeartbeat() {
     this.stopHeartbeat();
     this.lastHeartbeat = new Date();
-    
+
     this.heartbeatInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.send({ type: 'ping', data: {} });
@@ -242,6 +276,8 @@ class WebSocketService {
 
   executeCode(code: string, language: string, input?: string) {
     return this.withErrorHandling(() => {
+      console.log('Executing code via WebSocket:', { language, codeLength: code.length, hasInput: !!input });
+
       this.send({
         type: 'execute_code',
         data: {
@@ -251,6 +287,8 @@ class WebSocketService {
           sessionId: useAppStore.getState().sessionId,
         }
       });
+
+      console.log('Execute code message sent');
     }, 'executeCode');
   }
 
@@ -283,6 +321,8 @@ class WebSocketService {
 
   sendGhostMessage(message: string, context?: any) {
     return this.withErrorHandling(() => {
+      console.log('Sending Ghost AI message via WebSocket:', { messageLength: message.length, hasContext: !!context });
+
       useAppStore.getState().setGhostTyping(true);
 
       this.send({
@@ -297,6 +337,8 @@ class WebSocketService {
           },
         }
       });
+
+      console.log('Ghost message sent');
     }, 'sendGhostMessage');
   }
 
