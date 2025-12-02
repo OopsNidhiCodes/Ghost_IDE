@@ -30,6 +30,7 @@ export const IDEView: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Refs for focus management
   const editorRef = useRef<HTMLDivElement>(null);
@@ -287,11 +288,11 @@ export const IDEView: React.FC = () => {
   }
 
   return (
-    <ResponsiveLayout className="h-full" data-testid="ide-view">
+    <ResponsiveLayout className="h-full pt-0" data-testid="ide-view">
       {/* Main IDE Layout */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Toolbar */}
-        <div className="bg-ghost-900 border-b border-ghost-700 p-3 flex-shrink-0">
+        <div className="bg-ghost-900 border-b border-ghost-700 p-3 flex-shrink-0 mt-24">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <LanguageSelector onLanguageChange={handleLanguageChange} />
@@ -400,26 +401,42 @@ export const IDEView: React.FC = () => {
         </div>
       </div>
 
-      {/* Resizable Handle for Chat */}
-      <ResizableHandle
-        direction="horizontal"
-        onMouseDown={(e) => {
-          e.preventDefault();
-          // Resizing handled by ResponsiveLayout parent
-        }}
-      />
+      {/* Resizable Handle for Chat - only show when chat is open */}
+      {isChatOpen && (
+        <ResizableHandle
+          direction="horizontal"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            // Resizing handled by ResponsiveLayout parent
+          }}
+        />
+      )}
 
-      {/* Ghost Chat Sidebar */}
-      <ResponsivePanel
-        className="border-l border-ghost-700"
-        title="Ghost AI Chat"
-        minWidth={280}
-        collapsible
-      >
-        <div ref={chatRef} className="h-full" tabIndex={-1} data-testid="ghost-chat">
-          <GhostChat />
+      {/* Ghost Chat Sidebar - Collapsible */}
+      <div className={`mt-24 transition-all duration-300 ease-in-out ${
+        isChatOpen 
+          ? 'w-80 opacity-100' 
+          : 'w-0 opacity-0 overflow-hidden'
+      }`}>
+        <div className="border-l border-ghost-700 h-full bg-ghost-900">
+          <div ref={chatRef} className="h-full" tabIndex={-1} data-testid="ghost-chat">
+            <GhostChat />
+          </div>
         </div>
-      </ResponsivePanel>
+      </div>
+
+      {/* Ghost Chat Toggle Button */}
+      <button
+        onClick={() => setIsChatOpen(!isChatOpen)}
+        className={`fixed right-4 bottom-20 z-50 p-4 rounded-full shadow-lg transition-all duration-300 ${
+          isChatOpen 
+            ? 'bg-ghost-700 hover:bg-ghost-600' 
+            : 'bg-spooky-purple hover:bg-spooky-purple/80 animate-pulse'
+        }`}
+        title={isChatOpen ? 'Close Ghost AI' : 'Open Ghost AI'}
+      >
+        <span className="text-2xl">{isChatOpen ? '✕' : '👻'}</span>
+      </button>
 
       {/* Editor Preferences Modal */}
       <EditorPreferences

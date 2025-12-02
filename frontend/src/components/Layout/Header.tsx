@@ -1,13 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAppStore } from '../../store/useAppStore';
 
 export const Header: React.FC = () => {
   const location = useLocation();
   const { sessionId, isConnected } = useAppStore();
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <header className="bg-ghost-900 border-b border-ghost-700 px-4 py-3">
+    <header 
+      className={`fixed top-0 left-0 right-0 z-50 border-b border-ghost-700 px-4 py-3 transition-all duration-300 ${
+        isHovered 
+          ? 'bg-ghost-900 backdrop-blur-md' 
+          : 'bg-ghost-900/30 backdrop-blur-sm'
+      }`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link 
