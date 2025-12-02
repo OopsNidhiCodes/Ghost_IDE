@@ -7,7 +7,7 @@ export const Layout: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-ghost-950">
       <Header />
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-auto">
         <div className="h-full">
           <Outlet />
         </div>

@@ -13,7 +13,7 @@ export const WelcomeView: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-ghost-950 via-ghost-900 to-ghost-950 p-8">
+    <div className="flex flex-col items-center min-h-full bg-gradient-to-br from-ghost-950 via-ghost-900 to-ghost-950 p-8 pt-24 pb-20 overflow-y-auto">
       <div className="max-w-4xl mx-auto text-center">
         {/* Main Title */}
         <div className="mb-8">
