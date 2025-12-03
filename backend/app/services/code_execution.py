@@ -138,48 +138,15 @@ class CodeExecutionService:
             except Exception as e:
                 logger.warning(f"Failed to trigger on_run hook: {e}")
         
-        # Check if Docker is available - use fallback for development
+        # Check if Docker is available - use native execution as fallback
         if not self.docker_client:
-            logger.warning("Docker not available, using fallback execution (Python only)")
+            logger.info("Docker not available, using native execution mode")
             
-            # Only support Python in fallback mode
             lang_str = request.language.value if hasattr(request.language, 'value') else str(request.language)
-            if lang_str.lower() != "python":
-                docker_setup_msg = (
-                    f"Docker is required for {lang_str} execution.\n\n"
-                    "To enable code execution for all languages:\n"
-                    "1. Install Docker Desktop from https://www.docker.com/products/docker-desktop\n"
-                    "2. Start Docker Desktop\n"
-                    "3. Restart the GhostIDE backend server\n\n"
-                    "Python execution is available without Docker."
-                )
-                result = ExecutionResult(
-                    stdout="",
-                    stderr=docker_setup_msg,
-                    exit_code=1,
-                    execution_time=0.0
-                )
-                
-                # Trigger on_error hook if enabled
-                if trigger_hooks:
-                    try:
-                        from .hook_manager import get_hook_manager
-                        hook_manager = get_hook_manager()
-                        if hook_manager:
-                            await hook_manager.on_error_hook(
-                                session_id=request.session_id,
-                                code=request.code,
-                                language=lang_str,
-                                error=docker_setup_msg
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to trigger on_error hook: {e}")
-                
-                return result
             
-            # Use fallback Python execution
+            # Try native execution for all supported languages
             try:
-                result = await self._fallback_python_execution(request, start_time)
+                result = await self._native_execution(request, start_time)
                 
                 # Trigger on_error hook if execution failed
                 if trigger_hooks and result.exit_code != 0:
@@ -190,7 +157,7 @@ class CodeExecutionService:
                             await hook_manager.on_error_hook(
                                 session_id=request.session_id,
                                 code=request.code,
-                                language="python",
+                                language=lang_str,
                                 error=result.stderr
                             )
                     except Exception as e:
@@ -198,10 +165,10 @@ class CodeExecutionService:
                 
                 return result
             except Exception as e:
-                logger.error(f"Fallback execution failed: {e}", exc_info=True)
+                logger.error(f"Native execution failed: {e}", exc_info=True)
                 result = ExecutionResult(
                     stdout="",
-                    stderr=f"Fallback execution error: {str(e)}",
+                    stderr=f"Execution error: {str(e)}",
                     exit_code=1,
                     execution_time=0.0
                 )
@@ -215,11 +182,13 @@ class CodeExecutionService:
                             await hook_manager.on_error_hook(
                                 session_id=request.session_id,
                                 code=request.code,
-                                language="python",
+                                language=lang_str,
                                 error=result.stderr
                             )
                     except Exception as e:
                         logger.warning(f"Failed to trigger on_error hook: {e}")
+                
+                return result
                 
                 return result
         
@@ -494,27 +463,117 @@ class CodeExecutionService:
         Fallback Python execution without Docker (for development only)
         WARNING: This is NOT secure and should only be used in development!
         """
+        return await self._native_execution(request, start_time)
+    
+    async def _native_execution(self, request: ExecutionRequest, start_time: datetime) -> ExecutionResult:
+        """
+        Native execution for all languages without Docker.
+        Used in production environments where Docker-in-Docker is not available.
+        """
         import subprocess
         import sys
         
+        lang_str = request.language.value if hasattr(request.language, 'value') else str(request.language)
+        lang_lower = lang_str.lower()
+        
         try:
-            # Create a temporary file with the code
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
-                f.write(request.code)
-                temp_file = f.name
+            # Determine file extension and execution command based on language
+            exec_config = {
+                'python': {'ext': '.py', 'cmd': lambda f: [sys.executable, f]},
+                'javascript': {'ext': '.js', 'cmd': lambda f: ['node', f]},
+                'java': {'ext': '.java', 'cmd': None, 'compile': True},
+                'cpp': {'ext': '.cpp', 'cmd': None, 'compile': True},
+            }
+            
+            config = exec_config.get(lang_lower)
+            if not config:
+                return ExecutionResult(
+                    stdout="",
+                    stderr=f"Unsupported language: {lang_str}",
+                    exit_code=1,
+                    execution_time=0.0
+                )
+            
+            # Create temp directory for execution
+            temp_dir = tempfile.mkdtemp(prefix='ghostide_')
             
             try:
-                # Execute with timeout
                 timeout = min(request.timeout, 30)
+                
+                if lang_lower == 'java':
+                    # Extract class name from code
+                    import re
+                    class_match = re.search(r'public\s+class\s+(\w+)', request.code)
+                    class_name = class_match.group(1) if class_match else 'Main'
+                    
+                    # Write Java file
+                    java_file = os.path.join(temp_dir, f'{class_name}.java')
+                    with open(java_file, 'w', encoding='utf-8') as f:
+                        f.write(request.code)
+                    
+                    # Compile
+                    compile_proc = await asyncio.create_subprocess_exec(
+                        'javac', java_file,
+                        cwd=temp_dir,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    _, compile_err = await asyncio.wait_for(compile_proc.communicate(), timeout=timeout)
+                    
+                    if compile_proc.returncode != 0:
+                        return ExecutionResult(
+                            stdout="",
+                            stderr=f"Compilation error:\n{compile_err.decode('utf-8', errors='replace')}",
+                            exit_code=1,
+                            execution_time=(datetime.now() - start_time).total_seconds()
+                        )
+                    
+                    # Execute
+                    cmd = ['java', '-cp', temp_dir, class_name]
+                    
+                elif lang_lower == 'cpp':
+                    # Write C++ file
+                    cpp_file = os.path.join(temp_dir, 'main.cpp')
+                    exe_file = os.path.join(temp_dir, 'main')
+                    
+                    with open(cpp_file, 'w', encoding='utf-8') as f:
+                        f.write(request.code)
+                    
+                    # Compile
+                    compile_proc = await asyncio.create_subprocess_exec(
+                        'g++', '-std=c++17', '-o', exe_file, cpp_file,
+                        cwd=temp_dir,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    _, compile_err = await asyncio.wait_for(compile_proc.communicate(), timeout=timeout)
+                    
+                    if compile_proc.returncode != 0:
+                        return ExecutionResult(
+                            stdout="",
+                            stderr=f"Compilation error:\n{compile_err.decode('utf-8', errors='replace')}",
+                            exit_code=1,
+                            execution_time=(datetime.now() - start_time).total_seconds()
+                        )
+                    
+                    cmd = [exe_file]
+                    
+                else:
+                    # Python or JavaScript - write file and get command
+                    temp_file = os.path.join(temp_dir, f'code{config["ext"]}')
+                    with open(temp_file, 'w', encoding='utf-8') as f:
+                        f.write(request.code)
+                    cmd = config['cmd'](temp_file)
+                
+                # Execute the code
                 process = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    temp_file,
+                    *cmd,
+                    cwd=temp_dir,
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
                 
-                # Send input if provided
                 stdin_data = request.input.encode('utf-8') if request.input else None
                 
                 try:
@@ -526,38 +585,43 @@ class CodeExecutionService:
                 except asyncio.TimeoutError:
                     process.kill()
                     await process.wait()
-                    execution_time = (datetime.now() - start_time).total_seconds()
                     return ExecutionResult(
                         stdout="",
                         stderr=f"Execution timed out after {timeout} seconds",
                         exit_code=124,
-                        execution_time=execution_time,
+                        execution_time=(datetime.now() - start_time).total_seconds(),
                         timed_out=True
                     )
-                
-                execution_time = (datetime.now() - start_time).total_seconds()
                 
                 return ExecutionResult(
                     stdout=stdout.decode('utf-8', errors='replace'),
                     stderr=stderr.decode('utf-8', errors='replace'),
                     exit_code=exit_code or 0,
-                    execution_time=execution_time
+                    execution_time=(datetime.now() - start_time).total_seconds()
                 )
                 
             finally:
-                # Clean up temp file
+                # Clean up temp directory
+                import shutil
                 try:
-                    os.unlink(temp_file)
+                    shutil.rmtree(temp_dir)
                 except:
                     pass
                     
-        except Exception as e:
-            execution_time = (datetime.now() - start_time).total_seconds()
+        except FileNotFoundError as e:
+            # Language runtime not installed
             return ExecutionResult(
                 stdout="",
-                stderr=f"Fallback execution error: {str(e)}",
+                stderr=f"Runtime not available: {str(e)}. Please ensure {lang_str} is installed.",
                 exit_code=1,
-                execution_time=execution_time
+                execution_time=(datetime.now() - start_time).total_seconds()
+            )
+        except Exception as e:
+            return ExecutionResult(
+                stdout="",
+                stderr=f"Execution error: {str(e)}",
+                exit_code=1,
+                execution_time=(datetime.now() - start_time).total_seconds()
             )
 
 
