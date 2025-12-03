@@ -9,7 +9,7 @@ from typing import Optional
 
 from app.services.websocket_manager import connection_manager
 from app.services.websocket_code_execution import websocket_code_execution_service
-from app.services.ghost_ai import get_ghost_ai_service
+from app.services.ghost_ai import get_ghost_ai_service, AIContext
 from app.models.websocket_schemas import (
     WebSocketMessage,
     WebSocketMessageType,
@@ -152,12 +152,23 @@ async def handle_client_message(websocket: WebSocket, session_id: str, message: 
             logger.info(f"Processing Ghost AI message for session {session_id}")
             try:
                 user_message = message.data.get("message", "")
-                context = message.data.get("context", {})
+                context_data = message.data.get("context", {})
+                
+                # Convert dict to AIContext object
+                ai_context = AIContext(
+                    chat_history=context_data.get("chat_history", []),
+                    current_code=context_data.get("current_code", ""),
+                    language=context_data.get("language", "python"),
+                    recent_errors=context_data.get("recent_errors", []),
+                    session_id=session_id,
+                    user_preferences=context_data.get("user_preferences", {})
+                )
+                
                 # Get AI response
                 ghost_service = get_ghost_ai_service()
                 ai_response = await ghost_service.generate_response(
                     user_message,
-                    context
+                    ai_context
                 )
                 
                 # Send AI response
@@ -166,7 +177,7 @@ async def handle_client_message(websocket: WebSocket, session_id: str, message: 
                     session_id=session_id,
                     data={
                         "message": ai_response,
-                        "context": context
+                        "context": context_data
                     }
                 )
                 await connection_manager.send_to_connection(websocket, response_msg)

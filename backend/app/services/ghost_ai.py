@@ -5,11 +5,11 @@ Ghost AI Service - Spooky AI assistant for the GhostIDE
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
 
-import openai
 from pydantic import BaseModel, Field, ConfigDict
 
 from ..models.schemas import ChatMessage, CodeFile, LanguageType
@@ -188,8 +188,9 @@ class GhostAIService:
         self.api_key = api_key
         self.personality = personality or GhostPersonality()
         self.system_prompt = self._build_system_prompt()
-        self.api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
-        self.offline_mode = not api_key or api_key == "test-key"
+        self.model = os.getenv("GHOST_AI_MODEL", "gemini-2.0-flash")
+        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        self.offline_mode = not api_key or api_key in ["test-key", "your-gemini-api-key-here"]
         
     def _build_system_prompt(self) -> str:
         """Build the system prompt that defines the Ghost AI persona"""
@@ -233,42 +234,34 @@ Remember: You're helpful first, spooky second. Never sacrifice code quality for 
         try:
             import httpx
             
-            # Build conversation history for Gemini
-            contents = []
-            
-            # Add system prompt as the first user part (or context)
-            # Gemini doesn't have a strict 'system' role in v1beta chat, so we prepend to context
-            
-            # Add recent chat history
-            for msg in context.chat_history[-10:]:  # Last 10 messages
-                role = "user" if msg.get("sender") == "user" else "model"
-                contents.append({
-                    "role": role,
-                    "parts": [{"text": msg.get("content", "")}]
-                })
-            
-            # Add current context information and prompt
+            # Build context information
             context_info = self._build_context_info(context)
-            final_prompt = f"{self.system_prompt}\n\nCONTEXT:\n{context_info}\n\nUSER REQUEST:\n{prompt}"
             
-            # If history exists, append new user message. If not, start with it.
-            if contents and contents[-1]["role"] == "user":
-                # Merge with last user message if needed (Gemini prefers alternating roles)
-                contents[-1]["parts"][0]["text"] += f"\n\n{final_prompt}"
-            else:
-                contents.append({
-                    "role": "user",
-                    "parts": [{"text": final_prompt}]
-                })
+            # Create a single prompt with system instructions and user message
+            full_prompt = f"""{self.system_prompt}
+
+CONTEXT:
+{context_info}
+
+USER MESSAGE:
+{prompt}
+
+Respond in character as the Ghost AI. Be helpful but maintain your spooky persona."""
             
-            # Prepare request payload
+            # Prepare request payload - simple format for Gemini
             payload = {
-                "contents": contents,
+                "contents": [
+                    {
+                        "parts": [{"text": full_prompt}]
+                    }
+                ],
                 "generationConfig": {
                     "temperature": temperature,
                     "maxOutputTokens": 500,
                 }
             }
+            
+            logger.info(f"Calling Gemini API: {self.api_url}")
             
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -278,18 +271,21 @@ Remember: You're helpful first, spooky second. Never sacrifice code quality for 
                 )
                 
                 if response.status_code != 200:
-                    logger.error(f"Gemini API error: {response.text}")
+                    logger.error(f"Gemini API error {response.status_code}: {response.text}")
                     return self._get_fallback_response("error")
                 
                 data = response.json()
+                logger.info(f"Gemini API response received")
+                
                 if "candidates" in data and data["candidates"]:
                     content = data["candidates"][0]["content"]["parts"][0]["text"]
                     return content.strip()
                 else:
+                    logger.error(f"No candidates in Gemini response: {data}")
                     return self._get_fallback_response("default")
             
         except Exception as e:
-            logger.error(f"Error generating AI response: {e}")
+            logger.error(f"Error generating AI response: {e}", exc_info=True)
             return self._get_fallback_response("error")
     
     def _build_context_info(self, context: AIContext) -> str:
@@ -438,7 +434,14 @@ def get_ghost_ai_service() -> GhostAIService:
     """Get or create the global Ghost AI service instance"""
     global ghost_ai_service
     if ghost_ai_service is None:
-        import os
         api_key = os.getenv("GEMINI_API_KEY", os.getenv("OPENAI_API_KEY", "test-key"))
+        logger.info(f"Initializing Ghost AI with API key: {api_key[:10]}... (offline={not api_key or api_key in ['test-key', 'your-gemini-api-key-here']})")
         ghost_ai_service = GhostAIService(api_key=api_key)
     return ghost_ai_service
+
+
+def reset_ghost_ai_service() -> None:
+    """Reset the global Ghost AI service to pick up new configuration"""
+    global ghost_ai_service
+    ghost_ai_service = None
+    logger.info("Ghost AI service reset - will reinitialize on next call")
