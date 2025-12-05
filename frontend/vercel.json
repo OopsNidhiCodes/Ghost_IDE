@@ -15,9 +15,5 @@
         { "key": "X-XSS-Protection", "value": "1; mode=block" }
       ]
     }
-  ],
-  "env": {
-    "VITE_BACKEND_URL": "@backend_url",
-    "VITE_WS_URL": "@ws_url"
-  }
+  ]
 }
