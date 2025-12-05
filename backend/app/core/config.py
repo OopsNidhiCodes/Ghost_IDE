@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-key-change-in-production"
     
     # CORS settings
-    allowed_origins: list[str] = ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"]
+    allowed_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173"
     
     # Code execution settings
     code_execution_timeout: int = 30
